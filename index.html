@@ -75,6 +75,7 @@
       <span class="month-label" id="month-label"></span>
       <button class="nav-btn" onclick="changeMonth(1)">&#8250;</button>
     </div>
+    <button class="btn hidden" id="copy-month-config-btn" onclick="copyMonthConfiguration()"><i class="ti ti-copy"></i> Copiar configuração</button>
     <span class="focus-badge" id="focus-badge">
       <i class="ti ti-eye" style="font-size:11px"></i>
       <span id="focus-label">Nenhuma semana em foco</span>
@@ -209,6 +210,38 @@
     <div class="admin-list">
       <div class="admin-list-title">Usuários autorizados</div>
       <div id="admin-users-list"></div>
+    </div>
+  </div>
+</div>
+
+<div class="admin-overlay" id="policy-overlay" onclick="closePolicyEditor()">
+  <div class="admin-modal policy-modal" onclick="event.stopPropagation()">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title">Política da linha</div>
+        <div class="admin-sub" id="policy-current-label">Defina quais campos o editor poderá preencher.</div>
+      </div>
+      <button class="btn" type="button" onclick="closePolicyEditor()"><i class="ti ti-x"></i> Fechar</button>
+    </div>
+
+    <div class="admin-form">
+      <div>
+        <label class="login-label" for="policy-select">Perfil de edição</label>
+        <select class="login-input" id="policy-select" onchange="previewPolicySelection()">
+          <option value="entrada">Entrada semanal</option>
+          <option value="formula">Fórmula</option>
+          <option value="meta">Só meta</option>
+          <option value="mes_meta">Mês e meta</option>
+          <option value="tudo">Tudo liberado</option>
+          <option value="bloqueado">Bloqueado</option>
+        </select>
+      </div>
+
+      <div class="policy-preview" id="policy-preview"></div>
+
+      <div class="admin-actions">
+        <button class="btn btn-primary" type="button" onclick="savePolicyEditor()"><i class="ti ti-device-floppy"></i> Aplicar política</button>
+      </div>
     </div>
   </div>
 </div>

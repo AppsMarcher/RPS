@@ -82,6 +82,7 @@ let saveTimer = null;
 let syncMessageTimer = null;
 let authSubscription = null;
 let authPostLogoutMessage = '';
+let policyEditorState = null;
 
 const COLUMN_WIDTH_DEFAULTS = {
   area: 620,
@@ -418,49 +419,93 @@ function getIndicatorPolicyPresets() {
   };
 }
 
+function getIndicatorPolicyCode(ind) {
+  const current = getIndicatorEditableFields(ind);
+  return Object.entries(getIndicatorPolicyPresets()).find(([, preset]) =>
+    preset.label === current.label &&
+    preset.semanas === current.semanas &&
+    preset.mes === current.mes &&
+    preset.meta === current.meta
+  )?.[0] || 'entrada';
+}
+
+function getPolicyOptionMeta(code) {
+  const labels = {
+    entrada: {
+      title: 'Entrada semanal',
+      description: 'Editor preenche semanas. Mês fica calculado. Meta permanece manual.',
+    },
+    formula: {
+      title: 'Fórmula',
+      description: 'Linha protegida para o editor. Uso ideal para cálculos e referências.',
+    },
+    meta: {
+      title: 'Só meta',
+      description: 'Editor não preenche semanas nem mês. Só a meta manual fica aberta.',
+    },
+    mes_meta: {
+      title: 'Mês e meta',
+      description: 'Editor informa o consolidado do mês e a meta manualmente.',
+    },
+    tudo: {
+      title: 'Tudo liberado',
+      description: 'Semanas, mês e meta ficam abertos para edição.',
+    },
+    bloqueado: {
+      title: 'Bloqueado',
+      description: 'Nada fica digitável para o editor. Útil para linhas de apoio.',
+    },
+  };
+  return labels[code] || labels.entrada;
+}
+
+function previewPolicySelection() {
+  const select = document.getElementById('policy-select');
+  const preview = document.getElementById('policy-preview');
+  if (!select || !preview) return;
+  const meta = getPolicyOptionMeta(select.value);
+  preview.innerHTML = `<strong>${meta.title}</strong>${meta.description}`;
+}
+
+function closePolicyEditor() {
+  policyEditorState = null;
+  document.getElementById('policy-overlay')?.classList.remove('open');
+}
+
+function savePolicyEditor() {
+  if (!canEditStructure() || !policyEditorState) return;
+  const select = document.getElementById('policy-select');
+  const preset = getIndicatorPolicyPresets()[select?.value || ''];
+  if (!preset) return;
+
+  applyGridChange(() => {
+    const indicators = getIndicators(policyEditorState.areaId);
+    const ind = indicators[policyEditorState.idx];
+    if (!ind) return;
+    ind.editableFields = { ...preset };
+    if (!preset.mes && state.modoMes[modoMesK(policyEditorState.areaId, ind.id)] === 'manual') {
+      state.modoMes[modoMesK(policyEditorState.areaId, ind.id)] = 'soma';
+    }
+    if (!preset.meta && state.modoMeta[modoMetaK(policyEditorState.areaId, ind.id)] === 'manual') {
+      state.modoMeta[modoMetaK(policyEditorState.areaId, ind.id)] = 'soma';
+    }
+  });
+  closePolicyEditor();
+}
+
 function configureIndicadorEdit(aId, idx) {
   if (!canEditStructure()) return;
   const ind = getIndicators(aId)[idx];
   if (!ind || isSpacerIndicator(ind)) return;
 
-  const current = getIndicatorEditableFields(ind);
-  const currentCode = Object.entries(getIndicatorPolicyPresets()).find(([, preset]) =>
-    preset.label === current.label &&
-    preset.semanas === current.semanas &&
-    preset.mes === current.mes &&
-    preset.meta === current.meta
-  )?.[0] || 'personalizado';
-
-  const answer = prompt(
-    [
-      `Política atual: ${getIndicatorPolicyLabel(ind)} (${currentCode})`,
-      'Escolha uma política para esta linha:',
-      'entrada = Semanas liberadas, Mês calculado, Meta manual',
-      'formula = tudo bloqueado para o editor',
-      'meta = só Meta manual',
-      'mes_meta = Mês manual e Meta manual',
-      'tudo = Semanas, Mês e Meta manuais',
-      'bloqueado = nada digitável',
-    ].join('\n'),
-    currentCode
-  );
-  if (!answer) return;
-
-  const preset = getIndicatorPolicyPresets()[String(answer).trim().toLowerCase()];
-  if (!preset) {
-    alert('Política inválida. Use: entrada, formula, meta, mes_meta, tudo ou bloqueado.');
-    return;
-  }
-
-  applyGridChange(() => {
-    ind.editableFields = { ...preset };
-    if (!preset.mes && state.modoMes[modoMesK(aId, ind.id)] === 'manual') {
-      state.modoMes[modoMesK(aId, ind.id)] = 'soma';
-    }
-    if (!preset.meta && state.modoMeta[modoMetaK(aId, ind.id)] === 'manual') {
-      state.modoMeta[modoMetaK(aId, ind.id)] = 'soma';
-    }
-  });
+  policyEditorState = { areaId: aId, idx };
+  const currentCode = getIndicatorPolicyCode(ind);
+  const select = document.getElementById('policy-select');
+  const label = document.getElementById('policy-current-label');
+  if (select) select.value = currentCode;
+  if (label) label.textContent = `Política atual: ${getIndicatorPolicyLabel(ind)}. Escolha como o editor poderá preencher esta linha.`;
+  previewPolicySelection();
+  document.getElementById('policy-overlay')?.classList.add('open');
 }
 
 function parseClipboardTable(text) {
@@ -622,6 +667,7 @@ function renderAuthHeader() {
   const userBadge = document.getElementById('user-badge');
   const adminBtn = document.getElementById('admin-btn');
   const addAreaBtn = document.getElementById('add-area-btn');
+  const copyMonthConfigBtn = document.getElementById('copy-month-config-btn');
   if (!userBadge) return;
   const email = state.auth.user?.email || '';
   const role = state.auth.profile?.role || '';
@@ -631,6 +677,9 @@ function renderAuthHeader() {
   }
   if (addAreaBtn) {
     addAreaBtn.classList.toggle('hidden', !canEditStructure());
+  }
+  if (copyMonthConfigBtn) {
+    copyMonthConfigBtn.classList.toggle('hidden', !canEditStructure());
   }
 }
 
@@ -941,6 +990,82 @@ function buildSnapshotPayload() {
     modoMes: state.modoMes,
     modoMeta: state.modoMeta,
   };
+}
+
+function buildStructureOnlyPayload() {
+  return {
+    version: 2,
+    areas: JSON.parse(JSON.stringify(state.areas)),
+    indicadores: JSON.parse(JSON.stringify(state.indicadores)),
+    unidades: JSON.parse(JSON.stringify(state.unidades)),
+    dados: {},
+    cellStyles: {},
+    dadosMes: {},
+    dadosMeta: {},
+    anexos: {},
+    modoMes: JSON.parse(JSON.stringify(state.modoMes)),
+    modoMeta: JSON.parse(JSON.stringify(state.modoMeta)),
+  };
+}
+
+function parseMonthYearInput(raw) {
+  const match = String(raw || '').trim().match(/^(\d{1,2})\s*\/\s*(\d{4})$/);
+  if (!match) return null;
+  const month = Number(match[1]);
+  const year = Number(match[2]);
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return null;
+  return { month, year };
+}
+
+async function copyMonthConfiguration() {
+  if (!canEditStructure()) return;
+  if (!supabaseClient) {
+    alert('A cópia de configuração entre meses depende da sincronização com o Supabase.');
+    return;
+  }
+  if (state.sync.dirty) {
+    const saved = await saveToCloud(true);
+    if (!saved) {
+      alert('Não foi possível salvar o mês atual antes de copiar a configuração.');
+      return;
+    }
+  }
+
+  const targetInput = prompt(`Copiar a configuração de ${getPeriodoLabel()} para qual mês?\nUse o formato MM/AAAA.`, '');
+  if (!targetInput) return;
+  const target = parseMonthYearInput(targetInput);
+  if (!target) {
+    alert('Data inválida. Use o formato MM/AAAA, por exemplo 06/2026.');
+    return;
+  }
+
+  if (target.year === state.ano && target.month === state.mesIdx + 1) {
+    alert('Escolha um mês diferente do atual.');
+    return;
+  }
+
+  const targetLabel = `${MESES[target.month - 1]} ${target.year}`;
+  if (!confirm(`Copiar apenas a configuração estrutural de ${getPeriodoLabel()} para ${targetLabel}?\n\nIsso substitui a máscara do mês destino, mas não leva os dados preenchidos.`)) {
+    return;
+  }
+
+  const payload = buildStructureOnlyPayload();
+  const { error } = await supabaseClient
+    .from(SUPABASE_TABLE)
+    .upsert({
+      ano: target.year,
+      mes: target.month,
+      payload,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'ano,mes' });
+
+  if (error) {
+    alert(error.message || 'Não foi possível copiar a configuração para o mês escolhido.');
+    return;
+  }
+
+  alert(`Configuração copiada com sucesso para ${targetLabel}.`);
 }
 
 function applySnapshotPayload(payload) {
