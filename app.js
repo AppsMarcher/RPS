@@ -70,6 +70,7 @@ let state = {
   anexos:      {},
   modoMes:     {},
   modoMeta:    {},
+  gridSelection: null,
 };
 
 let lbKey = null;
@@ -104,6 +105,7 @@ const modoMesK   = (a,i)    => `mes:${a}|${i}`;
 const modoMetaK  = (a,i)    => `meta:${a}|${i}`;
 const dadosMesK  = (a,i)    => `vmes:${a}|${i}`;
 const dadosMetaK = (a,i)    => `vmeta:${a}|${i}`;
+const GRID_COLS  = ['S1', 'S2', 'S3', 'S4', 'S5', 'mes', 'meta'];
 
 function slugifyLabel(label) {
   return String(label || 'indicador')
@@ -114,9 +116,34 @@ function slugifyLabel(label) {
     .replace(/^_+|_+$/g, '') || 'indicador';
 }
 
+function getDefaultEditableFields(ind = {}) {
+  if (ind.type === 'spacer') {
+    return { label: false, semanas: false, mes: false, meta: false };
+  }
+  if (ind.aggregate === 'sum-children') {
+    return { label: true, semanas: false, mes: false, meta: false };
+  }
+  return { label: true, semanas: true, mes: false, meta: true };
+}
+
+function normalizeEditableFields(ind = {}) {
+  const defaults = getDefaultEditableFields(ind);
+  return {
+    ...defaults,
+    ...(ind.editableFields || {}),
+  };
+}
+
 function normalizeIndicator(ind, idx = 0) {
   if (typeof ind === 'string') {
-    return { id: `${slugifyLabel(ind)}_${idx}`, label: ind, parentId: null, aggregate: null, type: 'item' };
+    return {
+      id: `${slugifyLabel(ind)}_${idx}`,
+      label: ind,
+      parentId: null,
+      aggregate: null,
+      type: 'item',
+      editableFields: normalizeEditableFields({ type: 'item' }),
+    };
   }
   return {
     id: ind.id || `${slugifyLabel(ind.label)}_${idx}`,
@@ -124,6 +151,7 @@ function normalizeIndicator(ind, idx = 0) {
     parentId: ind.parentId || null,
     aggregate: ind.aggregate || null,
     type: ind.type || 'item',
+    editableFields: normalizeEditableFields(ind),
   };
 }
 
@@ -203,6 +231,356 @@ function getPeriodoLabel() {
   return `${MESES[state.mesIdx]} ${state.ano}`;
 }
 
+function normalizeGridCol(col) {
+  if (state.semanas.includes(col)) return col;
+  if (col === 'mes' || col === 'meta') return col;
+  return null;
+}
+
+function getEditableGridRows() {
+  const rows = [];
+  state.areas.forEach(area => {
+    getIndicators(area.id).forEach(ind => {
+      if (isSpacerIndicator(ind) || isAggregateIndicator(ind)) return;
+      rows.push({ areaId: area.id, indId: ind.id });
+    });
+  });
+  return rows;
+}
+
+function getGridRowIndex(areaId, indId) {
+  return getEditableGridRows().findIndex(row => row.areaId === areaId && row.indId === indId);
+}
+
+function getGridColIndex(col) {
+  return GRID_COLS.indexOf(col);
+}
+
+function buildGridCellRef(areaId, indId, col) {
+  const normalizedCol = normalizeGridCol(col);
+  if (!areaId || !indId || !normalizedCol) return null;
+  return { areaId, indId, col: normalizedCol };
+}
+
+function getGridCellRefFromInput(input) {
+  return buildGridCellRef(input?.dataset.areaId, input?.dataset.indId, input?.dataset.col);
+}
+
+function cloneGridCellRef(ref) {
+  return ref ? { areaId: ref.areaId, indId: ref.indId, col: ref.col } : null;
+}
+
+function normalizeGridSelection(selection) {
+  if (!selection?.anchor || !selection?.focus) return null;
+  const anchor = cloneGridCellRef(selection.anchor);
+  const focus = cloneGridCellRef(selection.focus);
+  if (!anchor || !focus) return null;
+
+  const anchorRow = getGridRowIndex(anchor.areaId, anchor.indId);
+  const focusRow = getGridRowIndex(focus.areaId, focus.indId);
+  const anchorCol = getGridColIndex(anchor.col);
+  const focusCol = getGridColIndex(focus.col);
+  if ([anchorRow, focusRow, anchorCol, focusCol].some(v => v < 0)) return null;
+
+  return { anchor, focus };
+}
+
+function setGridSelection(anchor, focus = anchor) {
+  const normalized = normalizeGridSelection({ anchor, focus });
+  state.gridSelection = normalized;
+}
+
+function clearGridSelection() {
+  state.gridSelection = null;
+}
+
+function getGridSelectionBounds() {
+  const selection = normalizeGridSelection(state.gridSelection);
+  if (!selection) return null;
+
+  const anchorRow = getGridRowIndex(selection.anchor.areaId, selection.anchor.indId);
+  const focusRow = getGridRowIndex(selection.focus.areaId, selection.focus.indId);
+  const anchorCol = getGridColIndex(selection.anchor.col);
+  const focusCol = getGridColIndex(selection.focus.col);
+
+  return {
+    rowStart: Math.min(anchorRow, focusRow),
+    rowEnd: Math.max(anchorRow, focusRow),
+    colStart: Math.min(anchorCol, focusCol),
+    colEnd: Math.max(anchorCol, focusCol),
+  };
+}
+
+function isGridCellSelected(areaId, indId, col) {
+  const bounds = getGridSelectionBounds();
+  if (!bounds) return false;
+  const rowIdx = getGridRowIndex(areaId, indId);
+  const colIdx = getGridColIndex(col);
+  if (rowIdx < 0 || colIdx < 0) return false;
+  return rowIdx >= bounds.rowStart && rowIdx <= bounds.rowEnd && colIdx >= bounds.colStart && colIdx <= bounds.colEnd;
+}
+
+function updateGridSelectionUI() {
+  document.querySelectorAll('#table-body td.grid-selected').forEach(td => td.classList.remove('grid-selected'));
+  document.querySelectorAll('#table-body .cell-input.grid-selected-input').forEach(inp => inp.classList.remove('grid-selected-input'));
+
+  const bounds = getGridSelectionBounds();
+  if (!bounds) return;
+
+  const rows = getEditableGridRows();
+  for (let rowIdx = bounds.rowStart; rowIdx <= bounds.rowEnd; rowIdx++) {
+    const row = rows[rowIdx];
+    if (!row) continue;
+    for (let colIdx = bounds.colStart; colIdx <= bounds.colEnd; colIdx++) {
+      const col = GRID_COLS[colIdx];
+      const selector = `.cell-input[data-area-id="${row.areaId}"][data-ind-id="${row.indId}"][data-col="${col}"]`;
+      const inp = document.querySelector(`#table-body ${selector}`);
+      if (!inp) continue;
+      inp.classList.add('grid-selected-input');
+      inp.closest('td')?.classList.add('grid-selected');
+    }
+  }
+}
+
+function getGridCellDisplayValue(areaId, indId, col) {
+  const ind = getIndicators(areaId).find(item => item.id === indId);
+  if (!ind) return '';
+  const unit = getUnit(areaId, ind);
+
+  if (state.semanas.includes(col)) {
+    const raw = state.dados[key(areaId, indId, col)] || '';
+    if (raw === '') return '';
+    const calcVal = calcWeekValue(areaId, ind, col);
+    return calcVal === null ? raw : formatVal(raw, state.unidades[key(areaId, indId, col)] || unit);
+  }
+
+  if (col === 'mes') {
+    const modo = state.modoMes[modoMesK(areaId, indId)] || 'soma';
+    if (modo === 'manual') {
+      const raw = state.dadosMes[dadosMesK(areaId, indId)] || '';
+      return raw ? formatVal(raw, unit) : '';
+    }
+    const value = calcMes(areaId, ind);
+    return value === null ? '' : formatNum(value, unit);
+  }
+
+  if (col === 'meta') {
+    const modo = state.modoMeta[modoMetaK(areaId, indId)] || 'manual';
+    if (modo === 'manual') {
+      const raw = state.dadosMeta[dadosMetaK(areaId, indId)] || '';
+      return raw ? formatVal(raw, unit) : '';
+    }
+    const value = calcMeta(areaId, ind);
+    return value === null ? '' : formatNum(value, unit);
+  }
+
+  return '';
+}
+
+function buildGridClipboardText() {
+  const bounds = getGridSelectionBounds();
+  if (!bounds) return '';
+  const rows = getEditableGridRows();
+  const lines = [];
+
+  for (let rowIdx = bounds.rowStart; rowIdx <= bounds.rowEnd; rowIdx++) {
+    const row = rows[rowIdx];
+    if (!row) continue;
+    const cells = [];
+    for (let colIdx = bounds.colStart; colIdx <= bounds.colEnd; colIdx++) {
+      cells.push(getGridCellDisplayValue(row.areaId, row.indId, GRID_COLS[colIdx]));
+    }
+    lines.push(cells.join('\t'));
+  }
+
+  return lines.join('\n');
+}
+
+function applyGridChange(mutator, options = {}) {
+  const { rerender = true, markDirty: shouldMarkDirty = true } = options;
+  mutator();
+  if (rerender) {
+    renderBody();
+  }
+  if (shouldMarkDirty) {
+    markDirty();
+  }
+}
+
+function getIndicatorPolicyPresets() {
+  return {
+    entrada: { label: true, semanas: true, mes: false, meta: true },
+    formula: { label: true, semanas: false, mes: false, meta: false },
+    meta: { label: true, semanas: false, mes: false, meta: true },
+    mes_meta: { label: true, semanas: false, mes: true, meta: true },
+    tudo: { label: true, semanas: true, mes: true, meta: true },
+    bloqueado: { label: true, semanas: false, mes: false, meta: false },
+  };
+}
+
+function configureIndicadorEdit(aId, idx) {
+  if (!canEditStructure()) return;
+  const ind = getIndicators(aId)[idx];
+  if (!ind || isSpacerIndicator(ind)) return;
+
+  const current = getIndicatorEditableFields(ind);
+  const currentCode = Object.entries(getIndicatorPolicyPresets()).find(([, preset]) =>
+    preset.label === current.label &&
+    preset.semanas === current.semanas &&
+    preset.mes === current.mes &&
+    preset.meta === current.meta
+  )?.[0] || 'personalizado';
+
+  const answer = prompt(
+    [
+      `Política atual: ${getIndicatorPolicyLabel(ind)} (${currentCode})`,
+      'Escolha uma política para esta linha:',
+      'entrada = Semanas liberadas, Mês calculado, Meta manual',
+      'formula = tudo bloqueado para o editor',
+      'meta = só Meta manual',
+      'mes_meta = Mês manual e Meta manual',
+      'tudo = Semanas, Mês e Meta manuais',
+      'bloqueado = nada digitável',
+    ].join('\n'),
+    currentCode
+  );
+  if (!answer) return;
+
+  const preset = getIndicatorPolicyPresets()[String(answer).trim().toLowerCase()];
+  if (!preset) {
+    alert('Política inválida. Use: entrada, formula, meta, mes_meta, tudo ou bloqueado.');
+    return;
+  }
+
+  applyGridChange(() => {
+    ind.editableFields = { ...preset };
+    if (!preset.mes && state.modoMes[modoMesK(aId, ind.id)] === 'manual') {
+      state.modoMes[modoMesK(aId, ind.id)] = 'soma';
+    }
+    if (!preset.meta && state.modoMeta[modoMetaK(aId, ind.id)] === 'manual') {
+      state.modoMeta[modoMetaK(aId, ind.id)] = 'soma';
+    }
+  });
+}
+
+function parseClipboardTable(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .filter((row, idx, rows) => row !== '' || idx < rows.length - 1)
+    .map(row => row.split('\t'));
+}
+
+function setGridCellRawValue(areaId, indId, col, rawValue) {
+  const normalizedCol = normalizeGridCol(col);
+  if (!normalizedCol) return false;
+  const raw = String(rawValue ?? '');
+  const ind = getIndicators(areaId).find(item => item.id === indId);
+  if (!ind) return false;
+
+  if (state.semanas.includes(normalizedCol)) {
+    if (!canEditIndicatorSemanas(ind)) return false;
+    state.dados[key(areaId, indId, normalizedCol)] = raw;
+    return true;
+  }
+
+  if (normalizedCol === 'mes') {
+    if (!canEditIndicatorMes(ind)) return false;
+    state.modoMes[modoMesK(areaId, indId)] = 'manual';
+    state.dadosMes[dadosMesK(areaId, indId)] = raw;
+    return true;
+  }
+
+  if (normalizedCol === 'meta') {
+    if (!canEditIndicatorMeta(ind)) return false;
+    state.modoMeta[modoMetaK(areaId, indId)] = 'manual';
+    state.dadosMeta[dadosMetaK(areaId, indId)] = raw;
+    return true;
+  }
+
+  return false;
+}
+
+function handleGridPaste(event) {
+  if (!canEditData()) return;
+  const text = event.clipboardData?.getData('text/plain');
+  if (!text || (!text.includes('\t') && !text.includes('\n') && !text.includes('\r'))) return;
+
+  const startAreaId = event.target.dataset.areaId;
+  const startIndId = event.target.dataset.indId;
+  const startCol = normalizeGridCol(event.target.dataset.col);
+  const startRowIdx = getGridRowIndex(startAreaId, startIndId);
+  const startColIdx = getGridColIndex(startCol);
+  if (startRowIdx < 0 || startColIdx < 0) return;
+
+  const matrix = parseClipboardTable(text);
+  if (!matrix.length) return;
+
+  event.preventDefault();
+
+  const rows = getEditableGridRows();
+  let changed = false;
+  matrix.forEach((cells, rowOffset) => {
+    const row = rows[startRowIdx + rowOffset];
+    if (!row) return;
+    cells.forEach((cellValue, colOffset) => {
+      const col = GRID_COLS[startColIdx + colOffset];
+      if (!col) return;
+      if (setGridCellRawValue(row.areaId, row.indId, col, cellValue)) {
+        changed = true;
+      }
+    });
+  });
+
+  if (!changed) return;
+  applyGridChange(() => {});
+}
+
+function handleGridInputPointerDown(event) {
+  const ref = getGridCellRefFromInput(event.currentTarget);
+  if (!ref) return;
+  if (event.shiftKey && state.gridSelection?.anchor) {
+    setGridSelection(state.gridSelection.anchor, ref);
+  } else {
+    setGridSelection(ref, ref);
+  }
+  updateGridSelectionUI();
+}
+
+function handleGridInputFocus(event) {
+  const ref = getGridCellRefFromInput(event.currentTarget);
+  if (!ref) return;
+  if (state.gridSelection && isGridCellSelected(ref.areaId, ref.indId, ref.col)) {
+    updateGridSelectionUI();
+    return;
+  }
+  if (event.shiftKey && state.gridSelection?.anchor) {
+    setGridSelection(state.gridSelection.anchor, ref);
+  } else {
+    setGridSelection(ref, ref);
+  }
+  updateGridSelectionUI();
+}
+
+function handleDocumentCopy(event) {
+  const active = document.activeElement;
+  const isGridInput = active?.classList?.contains('cell-input') && active?.dataset?.areaId;
+  if (!isGridInput) return;
+
+  const bounds = getGridSelectionBounds();
+  const isMultiCellSelection = !!bounds && (bounds.rowStart !== bounds.rowEnd || bounds.colStart !== bounds.colEnd);
+  if (!isMultiCellSelection && typeof active.selectionStart === 'number' && typeof active.selectionEnd === 'number' && active.selectionStart !== active.selectionEnd) {
+    return;
+  }
+
+  const text = buildGridClipboardText();
+  if (!text) return;
+
+  event.preventDefault();
+  event.clipboardData?.setData('text/plain', text);
+}
+
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
@@ -252,7 +630,7 @@ function renderAuthHeader() {
     adminBtn.classList.toggle('hidden', !isAdminUser());
   }
   if (addAreaBtn) {
-    addAreaBtn.classList.toggle('hidden', !canEditRps());
+    addAreaBtn.classList.toggle('hidden', !canEditStructure());
   }
 }
 
@@ -268,8 +646,56 @@ function isAdminUser() {
   return state.auth.profile?.role === 'admin';
 }
 
-function canEditRps() {
+function canEditData() {
   return !!state.auth.profile && state.auth.profile.role !== 'viewer';
+}
+
+function canEditStructure() {
+  return isAdminUser();
+}
+
+function canEditRps() {
+  return canEditData();
+}
+
+function getIndicatorEditableFields(ind) {
+  return normalizeEditableFields(ind);
+}
+
+function canEditIndicatorLabel(ind) {
+  return canEditStructure() && getIndicatorEditableFields(ind).label !== false;
+}
+
+function canEditIndicatorSemanas(ind) {
+  if (isAggregateIndicator(ind) || isSpacerIndicator(ind)) return false;
+  if (canEditStructure()) return true;
+  return canEditData() && getIndicatorEditableFields(ind).semanas !== false;
+}
+
+function canEditIndicatorMes(ind) {
+  if (isAggregateIndicator(ind) || isSpacerIndicator(ind)) return false;
+  if (canEditStructure()) return true;
+  return canEditData() && getIndicatorEditableFields(ind).mes === true;
+}
+
+function canEditIndicatorMeta(ind) {
+  if (isAggregateIndicator(ind) || isSpacerIndicator(ind)) return false;
+  if (canEditStructure()) return true;
+  return canEditData() && getIndicatorEditableFields(ind).meta === true;
+}
+
+function getIndicatorPolicyLabel(ind) {
+  const fields = getIndicatorEditableFields(ind);
+  if (isSpacerIndicator(ind)) return 'Espaço';
+  if (isAggregateIndicator(ind)) return 'Calculado';
+  if (fields.semanas && fields.meta && !fields.mes) return 'Entrada semanal';
+  if (!fields.semanas && !fields.mes && !fields.meta) return 'Bloqueado';
+  if (!fields.semanas && !fields.mes && fields.meta) return 'Só meta';
+  if (!fields.semanas && fields.mes && fields.meta) return 'Mês e meta';
+  if (fields.semanas && fields.mes && fields.meta) return 'Tudo liberado';
+  if (fields.semanas && !fields.mes && !fields.meta) return 'Só semanas';
+  return 'Personalizado';
+}
 }
 
 function setAdminMessage(message, type = '') {
@@ -283,29 +709,47 @@ function renderAuthMode() {
   const heading = document.getElementById('login-form-heading');
   const submitBtn = document.getElementById('login-submit');
   const modeBtn = document.getElementById('auth-mode-btn');
+  const resetBtn = document.getElementById('reset-password-btn');
   const help = document.getElementById('auth-mode-help');
   const confirmWrap = document.getElementById('login-confirm-wrap');
+  const emailInput = document.getElementById('login-email');
   const passwordInput = document.getElementById('login-password');
   const confirmInput = document.getElementById('login-password-confirm');
   const isSignup = state.auth.mode === 'signup';
+  const isRecovery = state.auth.mode === 'recovery';
 
-  if (heading) heading.textContent = isSignup ? 'Primeiro acesso' : 'Entrar';
+  if (heading) heading.textContent = isRecovery ? 'Redefinir senha' : (isSignup ? 'Primeiro acesso' : 'Entrar');
   if (submitBtn) {
-    submitBtn.innerHTML = isSignup
-      ? '<i class="ti ti-user-plus"></i> Criar senha'
-      : '<i class="ti ti-login-2"></i> Entrar';
+    submitBtn.innerHTML = isRecovery
+      ? '<i class="ti ti-key"></i> Atualizar senha'
+      : (isSignup
+        ? '<i class="ti ti-user-plus"></i> Criar senha'
+        : '<i class="ti ti-login-2"></i> Entrar');
   }
   if (modeBtn) {
     modeBtn.textContent = isSignup ? 'Já tenho senha' : 'Primeiro acesso';
+    modeBtn.classList.toggle('hidden', isRecovery);
+  }
+  if (resetBtn) {
+    resetBtn.classList.toggle('hidden', isSignup || isRecovery);
   }
   if (help) {
-    help.textContent = isSignup
-      ? 'Use um email previamente liberado pelo administrador para criar sua senha.'
-      : 'Se seu email já foi liberado pelo administrador, use “Primeiro acesso” para criar sua senha.';
+    help.textContent = isRecovery
+      ? 'Digite sua nova senha e confirme para concluir a recuperação.'
+      : (isSignup
+        ? 'Use um email previamente liberado pelo administrador para criar sua senha.'
+        : 'Se seu email já foi liberado pelo administrador, use “Primeiro acesso” para criar sua senha.');
   }
-  if (confirmWrap) confirmWrap.classList.toggle('hidden', !isSignup);
-  if (passwordInput) passwordInput.autocomplete = isSignup ? 'new-password' : 'current-password';
-  if (!isSignup && confirmInput) confirmInput.value = '';
+  if (confirmWrap) confirmWrap.classList.toggle('hidden', !(isSignup || isRecovery));
+  if (emailInput) {
+    emailInput.disabled = isRecovery;
+    emailInput.autocomplete = isRecovery ? 'email' : 'email';
+  }
+  if (passwordInput) {
+    passwordInput.autocomplete = (isSignup || isRecovery) ? 'new-password' : 'current-password';
+    passwordInput.placeholder = isRecovery ? 'Digite sua nova senha' : 'Digite sua senha';
+  }
+  if (!isSignup && !isRecovery && confirmInput) confirmInput.value = '';
 }
 
 function toggleAuthMode() {
@@ -315,6 +759,33 @@ function toggleAuthMode() {
     ? 'Entre com seu email e senha para acessar a RPS.'
     : 'Crie sua senha usando um email já autorizado.');
   renderAuthMode();
+}
+
+async function requestPasswordReset() {
+  if (!supabaseClient) {
+    setLoginMessage('Supabase não configurado para recuperação de senha.', 'error');
+    return;
+  }
+
+  const email = document.getElementById('login-email')?.value.trim() || '';
+  if (!validateEmail(email)) {
+    setLoginMessage('Informe um email válido para receber o link de recuperação.', 'error');
+    return;
+  }
+
+  setLoginBusy(true);
+  setLoginMessage('Enviando email de recuperação...');
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizeEmail(email), {
+    redirectTo: window.location.href,
+  });
+
+  setLoginBusy(false);
+  if (error) {
+    setLoginMessage(error.message || 'Não foi possível enviar o email de recuperação.', 'error');
+    return;
+  }
+
+  setLoginMessage('Email de recuperação enviado. Abra o link para redefinir sua senha.', 'success');
 }
 
 function renderSyncStatus() {
@@ -431,6 +902,7 @@ function resetStateData() {
   state.modoMeta = {};
   state.focusIdx = null;
   state.presentIdx = 0;
+  state.gridSelection = null;
 }
 
 function resetForSignedOut() {
@@ -621,6 +1093,16 @@ async function applyAuthSession(session) {
   state.auth.checked = true;
   state.auth.user = session?.user || null;
 
+  if (state.auth.mode === 'recovery' && state.auth.user) {
+    showLoginScreen();
+    const emailInput = document.getElementById('login-email');
+    if (emailInput) emailInput.value = state.auth.user.email || '';
+    setLoginBusy(false);
+    setLoginMessage('Defina sua nova senha para concluir a recuperação.');
+    renderAuthMode();
+    return;
+  }
+
   if (!state.auth.user) {
     state.auth.loadedUserId = null;
     state.auth.profile = null;
@@ -673,6 +1155,10 @@ function registerAuthListener() {
 
   const { data } = supabaseClient.auth.onAuthStateChange((event, session) => {
     window.setTimeout(() => {
+      if (event === 'PASSWORD_RECOVERY') {
+        state.auth.mode = 'recovery';
+        renderAuthMode();
+      }
       applyAuthSession(session);
     }, 0);
   });
@@ -691,6 +1177,35 @@ async function submitLogin(event) {
   const password = document.getElementById('login-password')?.value || '';
   const emailNormalized = normalizeEmail(email);
   const isSignup = state.auth.mode === 'signup';
+  const isRecovery = state.auth.mode === 'recovery';
+
+  if (isRecovery) {
+    const confirmPassword = document.getElementById('login-password-confirm')?.value || '';
+    if (!validatePassword(password)) {
+      setLoginMessage('A nova senha precisa ter pelo menos 6 caracteres.', 'error');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setLoginMessage('A confirmação da senha não confere.', 'error');
+      return;
+    }
+
+    setLoginBusy(true);
+    setLoginMessage('Atualizando sua senha...');
+    const { error } = await supabaseClient.auth.updateUser({ password });
+    setLoginBusy(false);
+
+    if (error) {
+      setLoginMessage(error.message || 'Não foi possível atualizar sua senha.', 'error');
+      return;
+    }
+
+    state.auth.mode = 'login';
+    renderAuthMode();
+    setLoginMessage('Senha redefinida com sucesso. Entre novamente.', 'success');
+    await supabaseClient.auth.signOut();
+    return;
+  }
 
   if (!validateEmail(email)) {
     setLoginMessage('Informe um email válido.', 'error');
@@ -1012,21 +1527,21 @@ function getModoMetaObj(aId, ind) {
 }
 
 function cycleModoMes(aId, ind) {
-  if (isAggregateIndicator(ind) || !canEditRps()) return;
-  const cur = state.modoMes[modoMesK(aId, ind.id)] || 'soma';
-  const idx = MES_MODOS.findIndex(m => m.id === cur);
-  state.modoMes[modoMesK(aId, ind.id)] = MES_MODOS[(idx + 1) % MES_MODOS.length].id;
-  renderBody();
-  markDirty();
+  if (isAggregateIndicator(ind) || !canEditStructure()) return;
+  applyGridChange(() => {
+    const cur = state.modoMes[modoMesK(aId, ind.id)] || 'soma';
+    const idx = MES_MODOS.findIndex(m => m.id === cur);
+    state.modoMes[modoMesK(aId, ind.id)] = MES_MODOS[(idx + 1) % MES_MODOS.length].id;
+  });
 }
 
 function cycleModoMeta(aId, ind) {
-  if (isAggregateIndicator(ind) || !canEditRps()) return;
-  const cur = state.modoMeta[modoMetaK(aId, ind.id)] || 'manual';
-  const idx = MES_MODOS.findIndex(m => m.id === cur);
-  state.modoMeta[modoMetaK(aId, ind.id)] = MES_MODOS[(idx + 1) % MES_MODOS.length].id;
-  renderBody();
-  markDirty();
+  if (isAggregateIndicator(ind) || !canEditStructure()) return;
+  applyGridChange(() => {
+    const cur = state.modoMeta[modoMetaK(aId, ind.id)] || 'manual';
+    const idx = MES_MODOS.findIndex(m => m.id === cur);
+    state.modoMeta[modoMetaK(aId, ind.id)] = MES_MODOS[(idx + 1) % MES_MODOS.length].id;
+  });
 }
 
 let ttTimer = null;
@@ -1229,7 +1744,7 @@ fileInput.addEventListener('change', () => {
 });
 
 function triggerUpload(ak, lbl) {
-  if (!canEditRps()) return;
+  if (!canEditData()) return;
   pendKey = ak;
   pendLbl = lbl;
   fileInput.click();
@@ -1302,7 +1817,8 @@ function renderBody() {
   const tbody = document.getElementById('table-body');
   captureRenderedCellStyles();
   tbody.innerHTML = '';
-  const editable = canEditRps();
+  const canEditRows = canEditStructure();
+  const canFillData = canEditData();
 
   state.areas.forEach(area => {
     const aRow = document.createElement('tr');
@@ -1319,7 +1835,16 @@ function renderBody() {
         spacerRow.className = 'indicator-row spacer-row';
         const spacerTd = document.createElement('td');
         spacerTd.colSpan = state.semanas.length + 4;
-        spacerTd.innerHTML = '&nbsp;';
+        spacerTd.innerHTML = `<span class="spacer-row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:6px">
+          <button onclick="insertSpacerAt('${area.id}',${ii})"
+            class="row-action-btn"
+            title="Inserir espaço abaixo"
+            style="visibility:${canEditRows ? 'visible' : 'hidden'}"><i class="ti ti-layout-rows"></i></button>
+          <button onclick="removeIndicador('${area.id}',${ii})"
+            class="row-action-btn row-action-remove"
+            title="Excluir espaço"
+            style="visibility:${canEditRows ? 'visible' : 'hidden'}">x</button>
+        </span>`;
         spacerRow.appendChild(spacerTd);
         tbody.appendChild(spacerRow);
         return;
@@ -1330,16 +1855,32 @@ function renderBody() {
       const unit = getUnit(area.id, ind);
       const isAggregate = isAggregateIndicator(ind);
       const isChild = !!ind.parentId;
+      const canEditLabel = canEditIndicatorLabel(ind);
+      const canEditSemanas = canEditIndicatorSemanas(ind);
+      const canEditMes = canEditIndicatorMes(ind);
+      const canEditMeta = canEditIndicatorMeta(ind);
+      const policyLabel = getIndicatorPolicyLabel(ind);
 
       const tdL = document.createElement('td');
       tdL.innerHTML = `<span style="display:flex;align-items:center;gap:6px;justify-content:space-between">
-        <span contenteditable="${editable}" style="flex:1;outline:none;padding:2px 3px 2px ${isChild ? '18px' : '3px'};border-radius:3px;font-weight:${isAggregate ? '600' : '400'}"
-          onblur="renameIndicador('${area.id}',${ii},this.textContent.trim())">${ind.label}</span>
+        <span contenteditable="${canEditLabel}" title="${policyLabel}" style="flex:1;outline:none;padding:2px 3px 2px ${isChild ? '18px' : '3px'};border-radius:3px;font-weight:${isAggregate ? '600' : '400'};white-space:break-spaces"
+          onblur="renameIndicador('${area.id}',${ii},this.textContent)"></span>
         <span style="display:inline-flex;align-items:center;gap:6px">
+          <button onclick="configureIndicadorEdit('${area.id}',${ii})"
+            class="row-action-btn"
+            title="Configurar campos digitáveis"
+            style="visibility:${canEditRows && !isAggregate ? 'visible' : 'hidden'}"><i class="ti ti-lock-cog"></i></button>
+          <button onclick="insertIndicadorAt('${area.id}',${ii})"
+            class="row-action-btn"
+            title="Inserir linha abaixo"
+            style="visibility:${canEditRows ? 'visible' : 'hidden'}"><i class="ti ti-plus"></i></button>
           <button onclick="removeIndicador('${area.id}',${ii})"
-            style="background:none;border:none;cursor:${editable ? 'pointer' : 'default'};color:#a0a09a;padding:0 2px;font-size:13px;line-height:1;visibility:${editable ? 'visible' : 'hidden'}">x</button>
+            class="row-action-btn row-action-remove"
+            title="Excluir linha"
+            style="visibility:${canEditRows ? 'visible' : 'hidden'}">x</button>
         </span>
       </span>`;
+      tdL.querySelector('[contenteditable]')?.replaceChildren(document.createTextNode(ind.label));
       row.appendChild(tdL);
 
       state.semanas.forEach((s, si) => {
@@ -1360,38 +1901,45 @@ function renderBody() {
         inp.className = 'cell-input';
         inp.placeholder = '-';
         inp.dataset.key = k;
+        inp.dataset.areaId = area.id;
+        inp.dataset.indId = ind.id;
+        inp.dataset.col = s;
         const rawVal = state.dados[k] || '';
         const calcVal = calcWeekValue(area.id, ind, s);
         inp.value = isAggregate ? formatNum(calcVal, unitCell) : (rawVal ? formatVal(rawVal, unitCell) : '');
-        inp.disabled = isAggregate || !editable;
-        inp.onfocus = () => {
+        inp.disabled = !canEditSemanas;
+        inp.onfocus = e => {
+          handleGridInputFocus(e);
           inp.value = state.dados[inp.dataset.key] || '';
           inp.select();
         };
         inp.onblur = e => {
           const rv = e.target.value;
-          state.dados[e.target.dataset.key] = rv;
+          applyGridChange(() => {
+            state.dados[e.target.dataset.key] = rv;
+          });
           e.target.value = rv ? formatVal(rv, unitCell) : '';
-          markDirty();
         };
         inp.onkeydown = e => {
           if (e.key === 'Enter') inp.blur();
         };
+        inp.onpaste = handleGridPaste;
+        inp.onpointerdown = handleGridInputPointerDown;
 
         const us = document.createElement('span');
         us.className = 'unit-tag';
         us.textContent = unitCell;
-        us.title = 'Alterar unidade';
+        us.title = canEditRows ? 'Alterar unidade' : unitCell;
         us.onclick = () => {
-          if (!editable) return;
-          const c = UNIDADES.indexOf(state.unidades[k] || 'R$');
-          state.unidades[k] = UNIDADES[(c + 1) % UNIDADES.length];
-          state.semanas.forEach(col => {
-            state.unidades[key(area.id, ind.id, col)] = state.unidades[k];
+          if (!canEditRows) return;
+          applyGridChange(() => {
+            const c = UNIDADES.indexOf(state.unidades[k] || 'R$');
+            state.unidades[k] = UNIDADES[(c + 1) % UNIDADES.length];
+            state.semanas.forEach(col => {
+              state.unidades[key(area.id, ind.id, col)] = state.unidades[k];
+            });
           });
           us.textContent = state.unidades[k];
-          renderBody();
-          markDirty();
         };
 
         const cb = document.createElement('button');
@@ -1403,7 +1951,7 @@ function renderBody() {
           cb.onmouseleave = hideTooltip;
         }
         cb.onclick = () => {
-          if (!editable) return;
+          if (!canFillData) return;
           triggerUpload(ak, lbl);
         };
 
@@ -1422,28 +1970,34 @@ function renderBody() {
       const mWrap = document.createElement('div');
       mWrap.className = 'calc-cell-wrap';
 
-      if (!isAggregate && modoMesObj.id === 'manual') {
+      if (!isAggregate && modoMesObj.id === 'manual' && canEditMes) {
         const inp2 = document.createElement('input');
         inp2.className = 'cell-input';
         inp2.style.textAlign = 'right';
         inp2.placeholder = '-';
-        inp2.disabled = !editable;
+        inp2.disabled = !canEditMes;
+        inp2.dataset.areaId = area.id;
+        inp2.dataset.indId = ind.id;
+        inp2.dataset.col = 'mes';
         const rawMes = state.dadosMes[dadosMesK(area.id, ind.id)] || '';
         inp2.value = rawMes ? formatVal(rawMes, unit) : '';
-        inp2.onfocus = () => {
+        inp2.onfocus = e => {
+          handleGridInputFocus(e);
           inp2.value = state.dadosMes[dadosMesK(area.id, ind.id)] || '';
           inp2.select();
         };
         inp2.onblur = e => {
-          state.dadosMes[dadosMesK(area.id, ind.id)] = e.target.value;
           const rv = e.target.value;
+          applyGridChange(() => {
+            state.dadosMes[dadosMesK(area.id, ind.id)] = rv;
+          });
           e.target.value = rv ? formatVal(rv, unit) : '';
-          renderBody();
-          markDirty();
         };
         inp2.onkeydown = e => {
           if (e.key === 'Enter') inp2.blur();
         };
+        inp2.onpaste = handleGridPaste;
+        inp2.onpointerdown = handleGridInputPointerDown;
         mWrap.appendChild(inp2);
       } else {
         const span = document.createElement('span');
@@ -1456,7 +2010,7 @@ function renderBody() {
       mBtn.className = 'mode-icon-btn';
       mBtn.title = modoMesObj.label;
       mBtn.innerHTML = `<i class="ti ${modoMesObj.icon}"></i>`;
-      mBtn.style.visibility = isAggregate || !editable ? 'hidden' : 'visible';
+      mBtn.style.visibility = isAggregate || !canEditRows ? 'hidden' : 'visible';
       mBtn.onclick = () => cycleModoMes(area.id, ind);
       mWrap.appendChild(mBtn);
       tdMes.appendChild(mWrap);
@@ -1469,28 +2023,34 @@ function renderBody() {
       const mtWrap = document.createElement('div');
       mtWrap.className = 'calc-cell-wrap';
 
-      if (!isAggregate && modoMetaObj.id === 'manual') {
+      if (!isAggregate && modoMetaObj.id === 'manual' && canEditMeta) {
         const inp3 = document.createElement('input');
         inp3.className = 'cell-input';
         inp3.style.textAlign = 'right';
         inp3.placeholder = '-';
-        inp3.disabled = !editable;
+        inp3.disabled = !canEditMeta;
+        inp3.dataset.areaId = area.id;
+        inp3.dataset.indId = ind.id;
+        inp3.dataset.col = 'meta';
         const rawMeta = state.dadosMeta[dadosMetaK(area.id, ind.id)] || '';
         inp3.value = rawMeta ? formatVal(rawMeta, unit) : '';
-        inp3.onfocus = () => {
+        inp3.onfocus = e => {
+          handleGridInputFocus(e);
           inp3.value = state.dadosMeta[dadosMetaK(area.id, ind.id)] || '';
           inp3.select();
         };
         inp3.onblur = e => {
-          state.dadosMeta[dadosMetaK(area.id, ind.id)] = e.target.value;
           const rv = e.target.value;
+          applyGridChange(() => {
+            state.dadosMeta[dadosMetaK(area.id, ind.id)] = rv;
+          });
           e.target.value = rv ? formatVal(rv, unit) : '';
-          renderBody();
-          markDirty();
         };
         inp3.onkeydown = e => {
           if (e.key === 'Enter') inp3.blur();
         };
+        inp3.onpaste = handleGridPaste;
+        inp3.onpointerdown = handleGridInputPointerDown;
         mtWrap.appendChild(inp3);
       } else {
         const span = document.createElement('span');
@@ -1503,7 +2063,7 @@ function renderBody() {
       mtBtn.className = 'mode-icon-btn';
       mtBtn.title = modoMetaObj.label;
       mtBtn.innerHTML = `<i class="ti ${modoMetaObj.icon}"></i>`;
-      mtBtn.style.visibility = isAggregate || !editable ? 'hidden' : 'visible';
+      mtBtn.style.visibility = isAggregate || !canEditRows ? 'hidden' : 'visible';
       mtBtn.onclick = () => cycleModoMeta(area.id, ind);
       mtWrap.appendChild(mtBtn);
       tdMeta.appendChild(mtWrap);
@@ -1527,7 +2087,7 @@ function renderBody() {
     const addRow = document.createElement('tr');
     const addTd = document.createElement('td');
     addTd.colSpan = state.semanas.length + 4;
-    addTd.innerHTML = `<div style="display:${editable ? 'flex' : 'none'};align-items:center;gap:8px">
+    addTd.innerHTML = `<div style="display:${canEditRows ? 'flex' : 'none'};align-items:center;gap:8px">
       <button class="add-btn" style="width:auto;padding-left:20px" onclick="addIndicador('${area.id}')">
         <i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> adicionar indicador</button>
       <button class="add-btn" style="width:auto;padding-left:0" onclick="addSpacer('${area.id}')">
@@ -1536,6 +2096,7 @@ function renderBody() {
     addRow.appendChild(addTd);
     tbody.appendChild(addRow);
   });
+  updateGridSelectionUI();
 }
 
 function getCellStyleSnapshot(td, wrap, inp) {
@@ -1780,10 +2341,11 @@ function renderPresentBody() {
 }
 
 function renameIndicador(aId, idx, novo) {
-  if (!canEditRps()) return;
-  if (!novo) return;
-  getIndicators(aId)[idx].label = novo;
-  markDirty();
+  if (!canEditStructure()) return;
+  if (!String(novo || '').trim()) return;
+  applyGridChange(() => {
+    getIndicators(aId)[idx].label = novo;
+  });
 }
 
 function removeIndicatorData(aId, indId) {
@@ -1801,23 +2363,50 @@ function removeIndicatorData(aId, indId) {
 }
 
 function addIndicador(aId) {
-  if (!canEditRps()) return;
+  if (!canEditStructure()) return;
   getIndicators(aId).push(normalizeIndicator({ label:'Novo indicador', id:`novo_indicador_${Date.now()}` }));
   initData();
   renderBody();
   markDirty();
 }
 
+function insertIndicadorAt(aId, idx) {
+  if (!canEditStructure()) return;
+  applyGridChange(() => {
+    const indicators = getIndicators(aId);
+    const insertIdx = Math.max(0, Math.min(indicators.length, idx + 1));
+    indicators.splice(insertIdx, 0, normalizeIndicator({
+      label: 'Novo indicador',
+      id: `novo_indicador_${Date.now()}`,
+    }));
+    initData();
+  });
+}
+
 function addSpacer(aId) {
-  if (!canEditRps()) return;
+  if (!canEditStructure()) return;
   getIndicators(aId).push(normalizeIndicator({ label:'', id:`spacer_${Date.now()}`, type:'spacer' }));
   initData();
   renderBody();
   markDirty();
 }
 
+function insertSpacerAt(aId, idx) {
+  if (!canEditStructure()) return;
+  applyGridChange(() => {
+    const indicators = getIndicators(aId);
+    const insertIdx = Math.max(0, Math.min(indicators.length, idx + 1));
+    indicators.splice(insertIdx, 0, normalizeIndicator({
+      label: '',
+      id: `spacer_${Date.now()}`,
+      type: 'spacer',
+    }));
+    initData();
+  });
+}
+
 function removeIndicador(aId, idx) {
-  if (!canEditRps()) return;
+  if (!canEditStructure()) return;
   const indicators = getIndicators(aId);
   const target = indicators[idx];
   const idsToRemove = [target.id, ...getChildIndicators(aId, target.id).map(child => child.id)];
@@ -1828,7 +2417,7 @@ function removeIndicador(aId, idx) {
 }
 
 function addArea() {
-  if (!canEditRps()) return;
+  if (!canEditStructure()) return;
   const n = prompt('Nome da nova área:');
   if (!n) return;
   const id = n.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
@@ -1896,6 +2485,7 @@ function exportData() {
 }
 
 async function bootstrap() {
+  document.addEventListener('copy', handleDocumentCopy);
   const loginForm = document.getElementById('login-form');
   if (loginForm) {
     loginForm.addEventListener('submit', submitLogin);

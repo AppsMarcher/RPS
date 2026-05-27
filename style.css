@@ -135,6 +135,10 @@ body { font-family: var(--font); background: var(--color-bg-tertiary); min-heigh
   color: #0C447C;
 }
 
+#reset-password-btn {
+  margin-top: -4px;
+}
+
 .auth-mode-help {
   font-size: 11px;
   color: var(--color-text-secondary);
@@ -291,10 +295,31 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
   font-size: 12px; color: var(--color-text-secondary);
   padding: 5px 10px 5px 20px; white-space: nowrap;
 }
+.row-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #a0a09a;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 4px;
+}
+.row-action-btn:hover {
+  color: #185FA5;
+  background: rgba(24,95,165,0.08);
+}
+.row-action-remove:hover {
+  color: #A32D2D;
+  background: rgba(163,45,45,0.08);
+}
 .spacer-row td {
   height: 20px;
-  padding: 0;
+  padding: 0 10px;
   background: #fff;
+}
+.spacer-row-actions {
+  min-height: 20px;
 }
 
 /* CELL */
@@ -350,6 +375,10 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
 /* CELL VARIANTS */
 td.focused-col { background: rgba(24,95,165,0.07); }
 td.focused-col .cell-input { font-weight: 500; }
+td.grid-selected { background: rgba(24,95,165,0.16); }
+td.grid-selected .cell-input { background: rgba(255,255,255,0.88); border-color: rgba(24,95,165,0.28); }
+td.grid-selected.focused-col { background: rgba(24,95,165,0.22); }
+.grid-selected-input:focus { box-shadow: 0 0 0 2px rgba(24,95,165,0.18); }
 td.consol-cell { background: rgba(234,243,222,0.4); }
 td.meta-cell   { background: rgba(250,238,218,0.4); }
 td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding: 0 6px; }
