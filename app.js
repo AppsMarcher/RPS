@@ -1829,15 +1829,16 @@ function getVals(aId, ind) {
     .filter(v => v !== null);
 }
 
-function getFocusedSemana() {
-  if (state.focusIdx === null) return null;
-  return state.semanas[state.focusIdx] || null;
+function getFocusedSemana(mode = 'grid') {
+  const idx = mode === 'presentation' ? state.presentIdx : state.focusIdx;
+  if (idx === null || idx === undefined) return null;
+  return state.semanas[idx] || null;
 }
 
-function calcMes(aId, ind) {
+function calcMes(aId, ind, options = {}) {
   if (isAggregateIndicator(ind)) {
     const vals = getChildIndicators(aId, ind.id)
-      .map(child => calcMes(aId, child))
+      .map(child => calcMes(aId, child, options))
       .filter(v => v !== null);
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   }
@@ -1851,17 +1852,17 @@ function calcMes(aId, ind) {
   if (modo === 'soma') return vals.reduce((a,b) => a + b, 0);
   if (modo === 'media') return vals.reduce((a,b) => a + b, 0) / vals.length;
   if (modo === 'ultima') {
-    const focusedSemana = getFocusedSemana();
+    const focusedSemana = options.focusedSemana ?? getFocusedSemana();
     if (focusedSemana) return calcWeekValue(aId, ind, focusedSemana);
     return vals[vals.length - 1];
   }
   return null;
 }
 
-function calcMeta(aId, ind) {
+function calcMeta(aId, ind, options = {}) {
   if (isAggregateIndicator(ind)) {
     const vals = getChildIndicators(aId, ind.id)
-      .map(child => calcMeta(aId, child))
+      .map(child => calcMeta(aId, child, options))
       .filter(v => v !== null);
     return vals.length ? vals.reduce((a, b) => a + b, 0) : null;
   }
@@ -1875,7 +1876,7 @@ function calcMeta(aId, ind) {
   if (modo === 'soma') return vals.reduce((a,b) => a + b, 0);
   if (modo === 'media') return vals.reduce((a,b) => a + b, 0) / vals.length;
   if (modo === 'ultima') {
-    const focusedSemana = getFocusedSemana();
+    const focusedSemana = options.focusedSemana ?? getFocusedSemana();
     if (focusedSemana) return calcWeekValue(aId, ind, focusedSemana);
     return vals[vals.length - 1];
   }
@@ -2614,6 +2615,7 @@ function updatePresentNav() {
 function renderPresentBody() {
   const thead = document.getElementById('present-table-head');
   const tbody = document.getElementById('present-table-body');
+  const focusedSemana = getFocusedSemana('presentation');
   syncColumnWidths();
   thead.innerHTML = '';
   tbody.innerHTML = '';
@@ -2693,8 +2695,8 @@ function renderPresentBody() {
         row.appendChild(td);
       });
 
-      const valMes = calcMes(area.id, ind);
-      const valMeta = calcMeta(area.id, ind);
+      const valMes = calcMes(area.id, ind, { focusedSemana });
+      const valMeta = calcMeta(area.id, ind, { focusedSemana });
       const vp = calcVar(valMes, valMeta);
 
       const tdMes = document.createElement('td');
