@@ -614,7 +614,7 @@ function handleGridInputFocus(event) {
   updateGridSelectionUI();
 }
 
-function findNextEditableInput(areaId, indId, col) {
+function findNextEditableCellRef(areaId, indId, col) {
   const startRowIdx = getGridRowIndex(areaId, indId);
   const colKey = normalizeGridCol(col);
   if (startRowIdx < 0 || !colKey) return null;
@@ -625,7 +625,7 @@ function findNextEditableInput(areaId, indId, col) {
     const selector = `.cell-input[data-area-id="${row.areaId}"][data-ind-id="${row.indId}"][data-col="${colKey}"]`;
     const input = document.querySelector(`#table-body ${selector}`);
     if (input && !input.disabled) {
-      return input;
+      return { areaId: row.areaId, indId: row.indId, col: colKey };
     }
   }
   return null;
@@ -635,10 +635,13 @@ function handleGridEnterNavigation(event) {
   if (event.key !== 'Enter') return;
   event.preventDefault();
   const current = event.currentTarget;
-  const nextInput = findNextEditableInput(current.dataset.areaId, current.dataset.indId, current.dataset.col);
+  const nextRef = findNextEditableCellRef(current.dataset.areaId, current.dataset.indId, current.dataset.col);
   current.blur();
-  if (nextInput) {
-    window.setTimeout(() => nextInput.focus(), 0);
+  if (nextRef) {
+    window.setTimeout(() => {
+      const selector = `.cell-input[data-area-id="${nextRef.areaId}"][data-ind-id="${nextRef.indId}"][data-col="${nextRef.col}"]`;
+      document.querySelector(`#table-body ${selector}`)?.focus();
+    }, 0);
   }
 }
 
@@ -2174,7 +2177,7 @@ function renderBody() {
         spacerRow.className = 'indicator-row spacer-row';
         const spacerTd = document.createElement('td');
         spacerTd.colSpan = state.semanas.length + 4;
-        spacerTd.innerHTML = `<span class="spacer-row-actions" style="display:flex;align-items:center;justify-content:flex-end;gap:6px">
+        spacerTd.innerHTML = `<span class="spacer-row-actions">
           <button onclick="insertSpacerAt('${area.id}',${ii})"
             class="row-action-btn"
             title="Inserir espaço abaixo"

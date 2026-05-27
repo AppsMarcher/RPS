@@ -314,13 +314,25 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
   background: rgba(163,45,45,0.08);
 }
 .spacer-row td {
-  height: 12px;
-  min-height: 12px;
-  padding: 0 10px;
+  position: relative;
+  height: 14px;
+  min-height: 14px;
+  padding: 0;
   background: #fff;
 }
 .spacer-row-actions {
-  min-height: 12px;
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0.18;
+  transition: opacity 0.12s ease;
+}
+.spacer-row:hover .spacer-row-actions {
+  opacity: 1;
 }
 
 /* CELL */
