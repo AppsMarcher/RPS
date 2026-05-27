@@ -1754,20 +1754,28 @@ function evaluateFormula(raw, areaId, semana, stack) {
   let expr = String(raw || '').trim();
   if (!expr.startsWith('=')) return null;
   expr = expr.slice(1);
+  let hasReference = false;
+  let hasResolvedReferenceValue = false;
 
   expr = expr.replace(/\{([^}]+)\}/g, (_, refName) => {
+    hasReference = true;
     const refInd = findIndicatorByRef(areaId, refName);
     if (!refInd) return '0';
     const val = calcWeekValue(areaId, refInd, semana, stack);
+    if (val !== null) hasResolvedReferenceValue = true;
     return String(val ?? 0);
   });
 
   expr = expr.replace(/\b[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]*\b/g, token => {
     const refInd = findIndicatorByRef(areaId, token);
     if (!refInd) return token;
+    hasReference = true;
     const val = calcWeekValue(areaId, refInd, semana, stack);
+    if (val !== null) hasResolvedReferenceValue = true;
     return String(val ?? 0);
   });
+
+  if (hasReference && !hasResolvedReferenceValue) return null;
 
   if (!/^[0-9+\-*/().\s]+$/.test(expr)) return null;
 
@@ -1811,6 +1819,11 @@ function getVals(aId, ind) {
     .filter(v => v !== null);
 }
 
+function getFocusedSemana() {
+  if (state.focusIdx === null) return null;
+  return state.semanas[state.focusIdx] || null;
+}
+
 function calcMes(aId, ind) {
   if (isAggregateIndicator(ind)) {
     const vals = getChildIndicators(aId, ind.id)
@@ -1827,7 +1840,11 @@ function calcMes(aId, ind) {
   if (!vals.length) return null;
   if (modo === 'soma') return vals.reduce((a,b) => a + b, 0);
   if (modo === 'media') return vals.reduce((a,b) => a + b, 0) / vals.length;
-  if (modo === 'ultima') return vals[vals.length - 1];
+  if (modo === 'ultima') {
+    const focusedSemana = getFocusedSemana();
+    if (focusedSemana) return calcWeekValue(aId, ind, focusedSemana);
+    return vals[vals.length - 1];
+  }
   return null;
 }
 
@@ -1847,7 +1864,11 @@ function calcMeta(aId, ind) {
   if (!vals.length) return null;
   if (modo === 'soma') return vals.reduce((a,b) => a + b, 0);
   if (modo === 'media') return vals.reduce((a,b) => a + b, 0) / vals.length;
-  if (modo === 'ultima') return vals[vals.length - 1];
+  if (modo === 'ultima') {
+    const focusedSemana = getFocusedSemana();
+    if (focusedSemana) return calcWeekValue(aId, ind, focusedSemana);
+    return vals[vals.length - 1];
+  }
   return null;
 }
 
