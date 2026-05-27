@@ -246,6 +246,37 @@
   </div>
 </div>
 
+<div class="admin-overlay" id="copy-config-overlay" onclick="closeCopyConfigEditor()">
+  <div class="admin-modal policy-modal" onclick="event.stopPropagation()">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title">Copiar configuração do mês</div>
+        <div class="admin-sub" id="copy-config-current-label">Escolha o mês e o ano de destino para receber a mesma máscara.</div>
+      </div>
+      <button class="btn" type="button" onclick="closeCopyConfigEditor()"><i class="ti ti-x"></i> Fechar</button>
+    </div>
+
+    <div class="admin-form">
+      <div class="admin-grid copy-config-grid">
+        <div>
+          <label class="login-label" for="copy-config-month">Mês destino</label>
+          <select class="login-input" id="copy-config-month"></select>
+        </div>
+        <div>
+          <label class="login-label" for="copy-config-year">Ano destino</label>
+          <select class="login-input" id="copy-config-year"></select>
+        </div>
+      </div>
+
+      <div class="policy-preview" id="copy-config-preview"></div>
+
+      <div class="admin-actions">
+        <button class="btn btn-primary" type="button" onclick="confirmCopyMonthConfiguration()"><i class="ti ti-copy"></i> Copiar configuração</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <script src="app.js"></script>

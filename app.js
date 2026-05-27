@@ -83,6 +83,7 @@ let syncMessageTimer = null;
 let authSubscription = null;
 let authPostLogoutMessage = '';
 let policyEditorState = null;
+let copyConfigState = null;
 
 const COLUMN_WIDTH_DEFAULTS = {
   area: 620,
@@ -1008,14 +1009,53 @@ function buildStructureOnlyPayload() {
   };
 }
 
-function parseMonthYearInput(raw) {
-  const match = String(raw || '').trim().match(/^(\d{1,2})\s*\/\s*(\d{4})$/);
-  if (!match) return null;
-  const month = Number(match[1]);
-  const year = Number(match[2]);
-  if (!Number.isInteger(month) || month < 1 || month > 12) return null;
-  if (!Number.isInteger(year) || year < 2000 || year > 2100) return null;
-  return { month, year };
+function previewCopyConfigSelection() {
+  const monthSelect = document.getElementById('copy-config-month');
+  const yearSelect = document.getElementById('copy-config-year');
+  const preview = document.getElementById('copy-config-preview');
+  if (!monthSelect || !yearSelect || !preview) return;
+  const month = Number(monthSelect.value);
+  const year = Number(yearSelect.value);
+  if (!month || !year) return;
+  preview.innerHTML = `<strong>Destino</strong>${MESES[month - 1]} ${year}. Apenas a máscara será copiada; os dados do mês destino continuarão zerados.`;
+}
+
+function closeCopyConfigEditor() {
+  copyConfigState = null;
+  document.getElementById('copy-config-overlay')?.classList.remove('open');
+}
+
+function openCopyConfigEditor() {
+  const monthSelect = document.getElementById('copy-config-month');
+  const yearSelect = document.getElementById('copy-config-year');
+  const label = document.getElementById('copy-config-current-label');
+  if (!monthSelect || !yearSelect) return;
+
+  monthSelect.innerHTML = MESES.map((mes, idx) => `<option value="${idx + 1}">${mes}</option>`).join('');
+
+  const currentYear = state.ano;
+  const years = [];
+  for (let year = currentYear - 1; year <= currentYear + 3; year++) {
+    years.push(`<option value="${year}">${year}</option>`);
+  }
+  yearSelect.innerHTML = years.join('');
+
+  let targetMonth = state.mesIdx + 2;
+  let targetYear = state.ano;
+  if (targetMonth > 12) {
+    targetMonth = 1;
+    targetYear += 1;
+  }
+
+  monthSelect.value = String(targetMonth);
+  yearSelect.value = String(targetYear);
+  monthSelect.onchange = previewCopyConfigSelection;
+  yearSelect.onchange = previewCopyConfigSelection;
+  if (label) {
+    label.textContent = `Origem: ${getPeriodoLabel()}. Escolha o mês e o ano que receberão a mesma configuração estrutural.`;
+  }
+  previewCopyConfigSelection();
+  document.getElementById('copy-config-overlay')?.classList.add('open');
 }
 
 async function copyMonthConfiguration() {
@@ -1024,6 +1064,25 @@ async function copyMonthConfiguration() {
     alert('A cópia de configuração entre meses depende da sincronização com o Supabase.');
     return;
   }
+  openCopyConfigEditor();
+}
+
+async function confirmCopyMonthConfiguration() {
+  if (!canEditStructure()) return;
+  if (!supabaseClient) return;
+
+  const month = Number(document.getElementById('copy-config-month')?.value);
+  const year = Number(document.getElementById('copy-config-year')?.value);
+  if (!month || !year) {
+    alert('Escolha um mês e um ano válidos.');
+    return;
+  }
+
+  if (year === state.ano && month === state.mesIdx + 1) {
+    alert('Escolha um mês diferente do atual.');
+    return;
+  }
+
   if (state.sync.dirty) {
     const saved = await saveToCloud(true);
     if (!saved) {
@@ -1032,20 +1091,7 @@ async function copyMonthConfiguration() {
     }
   }
 
-  const targetInput = prompt(`Copiar a configuração de ${getPeriodoLabel()} para qual mês?\nUse o formato MM/AAAA.`, '');
-  if (!targetInput) return;
-  const target = parseMonthYearInput(targetInput);
-  if (!target) {
-    alert('Data inválida. Use o formato MM/AAAA, por exemplo 06/2026.');
-    return;
-  }
-
-  if (target.year === state.ano && target.month === state.mesIdx + 1) {
-    alert('Escolha um mês diferente do atual.');
-    return;
-  }
-
-  const targetLabel = `${MESES[target.month - 1]} ${target.year}`;
+  const targetLabel = `${MESES[month - 1]} ${year}`;
   if (!confirm(`Copiar apenas a configuração estrutural de ${getPeriodoLabel()} para ${targetLabel}?\n\nIsso substitui a máscara do mês destino, mas não leva os dados preenchidos.`)) {
     return;
   }
@@ -1054,8 +1100,8 @@ async function copyMonthConfiguration() {
   const { error } = await supabaseClient
     .from(SUPABASE_TABLE)
     .upsert({
-      ano: target.year,
-      mes: target.month,
+      ano: year,
+      mes: month,
       payload,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'ano,mes' });
@@ -1065,6 +1111,7 @@ async function copyMonthConfiguration() {
     return;
   }
 
+  closeCopyConfigEditor();
   alert(`Configuração copiada com sucesso para ${targetLabel}.`);
 }
 
@@ -1143,6 +1190,11 @@ function renderAdminUsers() {
           <span>Acesso</span>
         </label>
       </div>
+      <div class="admin-user-actions">
+        <button class="row-action-btn row-action-remove" type="button" title="Revogar acesso" onclick="revokeAppUserAccess('${user.id}')" ${user.email === ADMIN_EMAIL ? 'disabled' : ''}>
+          <i class="ti ti-trash"></i>
+        </button>
+      </div>
     </div>
   `).join('');
 
@@ -1152,6 +1204,7 @@ function renderAdminUsers() {
       <div>Perfil</div>
       <div>Ativo</div>
       <div>Acesso</div>
+      <div>Ação</div>
     </div>
     ${rows}
   `;
@@ -1479,6 +1532,32 @@ async function updateAppUserRole(userId, role) {
   }
 
   setAdminMessage('Perfil atualizado com sucesso.', 'success');
+  await loadAdminUsers();
+}
+
+async function revokeAppUserAccess(userId) {
+  if (!supabaseClient || !isAdminUser()) return;
+  const user = state.auth.users.find(item => item.id === userId);
+  if (!user || user.email === ADMIN_EMAIL) return;
+
+  const confirmed = confirm(`Revogar o acesso de ${user.email}?\n\nO registro será preservado no banco para rastreabilidade, mas ficará inativo e sem acesso ao app.`);
+  if (!confirmed) return;
+
+  const { error } = await supabaseClient
+    .from(APP_USERS_TABLE)
+    .update({
+      active: false,
+      can_access: false,
+    })
+    .eq('id', userId);
+
+  if (error) {
+    setAdminMessage('Não foi possível revogar esse acesso.', 'error');
+    await loadAdminUsers();
+    return;
+  }
+
+  setAdminMessage('Acesso revogado com sucesso. O histórico do usuário foi preservado.', 'success');
   await loadAdminUsers();
 }
 
