@@ -730,6 +730,39 @@ function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
 
+function normalizePersonName(name) {
+  return String(name || '').trim().replace(/\s+/g, ' ');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function getDisplayName(profile = state.auth.profile, fallbackEmail = state.auth.user?.email || '') {
+  const rawName = normalizePersonName(profile?.name || profile?.full_name || profile?.nome || '');
+  if (rawName) return rawName;
+  const email = normalizeEmail(fallbackEmail);
+  return email ? email.split('@')[0] : '';
+}
+
+function getFirstName(name) {
+  const normalized = normalizePersonName(name);
+  if (!normalized) return '';
+  const [firstName] = normalized.split(' ');
+  return firstName || normalized;
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Bom dia';
+  if (hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
 function setLoginMessage(message, type = '') {
   const el = document.getElementById('login-message');
   if (!el) return;
@@ -768,10 +801,18 @@ function renderAuthHeader() {
   const adminBtn = document.getElementById('admin-btn');
   const addAreaBtn = document.getElementById('add-area-btn');
   const copyMonthConfigBtn = document.getElementById('copy-month-config-btn');
+  const headerSub = document.getElementById('header-sub');
   if (!userBadge) return;
   const email = state.auth.user?.email || '';
   const role = state.auth.profile?.role || '';
-  userBadge.textContent = email ? `${email}${role ? ` · ${role}` : ''}` : '';
+  const displayName = getDisplayName();
+  const firstName = getFirstName(displayName);
+  userBadge.textContent = email ? `${displayName || email}${role ? ` · ${role}` : ''}` : '';
+  if (headerSub) {
+    headerSub.textContent = firstName
+      ? `${getGreeting()}, ${firstName}!`
+      : 'Acompanhamento de indicadores por área';
+  }
   if (adminBtn) {
     adminBtn.classList.toggle('hidden', !isAdminUser());
   }
@@ -1297,6 +1338,15 @@ function renderAdminUsers() {
 
   const rows = visibleUsers.map(user => `
     <div class="admin-user-row">
+      <div>
+        <input
+          class="admin-user-name-input"
+          type="text"
+          value="${escapeHtml(getDisplayName(user, user.email))}"
+          placeholder="Nome do usuário"
+          onchange="updateAppUserName('${user.id}', this.value)"
+          ${user.email === ADMIN_EMAIL ? 'disabled' : ''}>
+      </div>
       <div class="admin-user-email">${user.email}</div>
       <div>
         <select class="admin-select" onchange="updateAppUserRole('${user.id}', this.value)" ${user.email === ADMIN_EMAIL ? 'disabled' : ''}>
@@ -1326,14 +1376,17 @@ function renderAdminUsers() {
   `).join('');
 
   list.innerHTML = `
-    <div class="admin-user-row header">
-      <div>Email</div>
-      <div>Perfil</div>
-      <div>Ativo</div>
-      <div>Acesso</div>
-      <div>Ação</div>
+    <div class="admin-users-scroll">
+      <div class="admin-user-row header">
+        <div>Nome</div>
+        <div>Email</div>
+        <div>Perfil</div>
+        <div>Ativo</div>
+        <div>Acesso</div>
+        <div>Ação</div>
+      </div>
+      ${rows}
     </div>
-    ${rows}
   `;
 }
 
@@ -1598,6 +1651,7 @@ async function submitAdminUser(event) {
   event.preventDefault();
   if (!supabaseClient || !isAdminUser()) return;
 
+  const name = normalizePersonName(document.getElementById('admin-name')?.value);
   const email = normalizeEmail(document.getElementById('admin-email')?.value);
   const role = document.getElementById('admin-role')?.value || 'editor';
   const active = !!document.getElementById('admin-active')?.checked;
@@ -1611,6 +1665,7 @@ async function submitAdminUser(event) {
   const { error } = await supabaseClient
     .from(APP_USERS_TABLE)
     .upsert({
+      name: name || null,
       email,
       role,
       active,
@@ -1646,6 +1701,31 @@ async function updateAppUserFlags(userId, field, value) {
 
   setAdminMessage('Acesso atualizado com sucesso.', 'success');
   await loadAdminUsers();
+}
+
+async function updateAppUserName(userId, rawName) {
+  if (!supabaseClient || !isAdminUser()) return;
+  const name = normalizePersonName(rawName);
+  const { error } = await supabaseClient
+    .from(APP_USERS_TABLE)
+    .update({ name: name || null })
+    .eq('id', userId);
+
+  if (error) {
+    setAdminMessage('Não foi possível atualizar o nome desse usuário.', 'error');
+    await loadAdminUsers();
+    return;
+  }
+
+  state.auth.users = state.auth.users.map(item => (
+    item.id === userId ? { ...item, name: name || null } : item
+  ));
+  if (state.auth.profile?.id === userId) {
+    state.auth.profile = { ...state.auth.profile, name: name || null };
+    renderAuthHeader();
+  }
+  setAdminMessage('Nome atualizado com sucesso.', 'success');
+  renderAdminUsers();
 }
 
 async function updateAppUserRole(userId, role) {
@@ -2906,7 +2986,7 @@ async function changeMonth(d) {
 
 function updateMonthLabel() {
   document.getElementById('month-label').textContent = getPeriodoLabel();
-  document.getElementById('header-sub').textContent = 'Acompanhamento de indicadores';
+  renderAuthHeader();
 }
 
 function exportData() {
