@@ -1,0 +1,125 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RPS - Marcher Brasil</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+  <div class="header">
+    <div class="header-left">
+      <img class="header-logo" src="Logo.png" alt="Marcher Brasil">
+      <div>
+        <div class="header-title">RPS - Marcher Brasil</div>
+        <div class="header-sub" id="header-sub">Acompanhamento de indicadores por área</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-present" onclick="openPresent()"><i class="ti ti-presentation"></i> Apresentar</button>
+      <button class="btn btn-primary" onclick="exportData()"><i class="ti ti-download"></i> Exportar</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="month-nav">
+      <button class="nav-btn" onclick="changeMonth(-1)">&#8249;</button>
+      <span class="month-label" id="month-label"></span>
+      <button class="nav-btn" onclick="changeMonth(1)">&#8250;</button>
+    </div>
+    <span class="focus-badge" id="focus-badge">
+      <i class="ti ti-eye" style="font-size:11px"></i>
+      <span id="focus-label">Nenhuma semana em foco</span>
+    </span>
+    <span class="sync-badge" id="sync-badge">
+      <i class="ti ti-cloud-off"></i>
+      <span id="sync-label">Sincronização automática indisponível</span>
+    </span>
+    <div style="flex:1"></div>
+    <button class="btn" onclick="addArea()"><i class="ti ti-plus"></i> Nova área</button>
+  </div>
+
+  <div class="table-wrap">
+    <table id="main-table">
+      <colgroup id="main-colgroup"></colgroup>
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <div class="legend">
+    <span class="legend-item"><span class="legend-dot" style="background:#185FA5"></span> Semana em foco (clique no cabecalho)</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#185FA5"></span> Clipe apagado = sem anexo . colorido = tem imagem</span>
+    <span class="legend-item"><span class="legend-dot" style="background:#EF9F27"></span> Meta por linha: clique no icone para alternar soma / media / ultima</span>
+  </div>
+</div>
+
+<!-- Tooltip -->
+<div class="img-tooltip" id="img-tooltip">
+  <img id="tooltip-img" src="" alt="">
+  <div class="img-tooltip-label" id="tooltip-label"></div>
+</div>
+
+<!-- Modal de anexos -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <div class="attach-modal" onclick="event.stopPropagation()">
+    <div class="attach-modal-head">
+      <div>
+        <div class="attach-modal-title" id="lb-label"></div>
+        <div class="attach-modal-sub">Anexos da célula</div>
+      </div>
+      <div class="attach-modal-actions">
+        <button class="lb-btn" onclick="closeLightbox()"><i class="ti ti-x"></i> Fechar</button>
+      </div>
+    </div>
+    <div class="attach-preview" id="attach-preview"></div>
+    <div class="attach-docs" id="attach-docs"></div>
+  </div>
+</div>
+<input type="file" class="file-input" id="file-input" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" multiple>
+
+<!-- Apresentacao -->
+<div class="present-overlay" id="present-overlay">
+  <div class="app present-app">
+    <div class="header">
+      <div class="header-left">
+        <img class="header-logo" src="Logo.png" alt="Marcher Brasil">
+        <div>
+          <div class="header-title">RPS - Marcher Brasil</div>
+          <div class="header-sub" id="p-header-sub">Acompanhamento de indicadores por área</div>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-present" onclick="closePresent()"><i class="ti ti-x"></i> Sair</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="month-nav">
+        <span class="month-label" id="p-month-label"></span>
+      </div>
+      <span class="focus-badge active">
+        <i class="ti ti-eye" style="font-size:11px"></i>
+        <span id="p-focus-label"></span>
+      </span>
+      <div style="flex:1"></div>
+    </div>
+
+    <div class="table-wrap present-table-wrap">
+      <table id="present-main-table">
+        <colgroup id="present-colgroup"></colgroup>
+        <thead id="present-table-head"></thead>
+        <tbody id="present-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
