@@ -98,6 +98,7 @@ const COLUMN_WIDTH_DEFAULTS = {
   S5: 110,
   mes: 120,
   meta: 120,
+  vardiff: 120,
   var: 120,
 };
 
@@ -193,7 +194,7 @@ function getChildIndicators(areaId, parentId) {
 }
 
 function getColumnKeys() {
-  return ['area', ...state.semanas, 'mes', 'meta', 'var'];
+  return ['area', ...state.semanas, 'mes', 'meta', 'vardiff', 'var'];
 }
 
 function ensureColumnWidths() {
@@ -378,6 +379,13 @@ function getGridCellDisplayValue(areaId, indId, col) {
       return raw ? formatVal(raw, unit) : '';
     }
     const value = calcMeta(areaId, ind);
+    return value === null ? '' : formatNum(value, unit);
+  }
+
+  if (col === 'vardiff') {
+    const mes = calcMes(areaId, ind);
+    const meta = calcMeta(areaId, ind);
+    const value = calcVarDiff(mes, meta);
     return value === null ? '' : formatNum(value, unit);
   }
 
@@ -1888,6 +1896,11 @@ function calcVar(ref, meta) {
   return ((ref - meta) / Math.abs(meta)) * 100;
 }
 
+function calcVarDiff(ref, meta) {
+  if (ref === null || meta === null) return null;
+  return ref - meta;
+}
+
 function getModoMesObj(aId, ind) {
   if (isAggregateIndicator(ind)) return MES_MODOS[0];
   const id = state.modoMes[modoMesK(aId, ind.id)] || 'soma';
@@ -2180,6 +2193,11 @@ function renderHeader() {
   tr.appendChild(th);
 
   th = document.createElement('th');
+  th.className = 'vardiff-col';
+  th.innerHTML = makeHeaderContent(`<i class="ti ti-minus-vertical" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>Variação`, 'vardiff');
+  tr.appendChild(th);
+
+  th = document.createElement('th');
   th.className = 'var-col';
   th.innerHTML = makeHeaderContent(`<i class="ti ti-trending-up" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>Variação %`, 'var');
   tr.appendChild(th);
@@ -2198,7 +2216,7 @@ function renderBody() {
     const aRow = document.createElement('tr');
     aRow.className = 'area-header-row';
     const aTd = document.createElement('td');
-    aTd.colSpan = state.semanas.length + 4;
+    aTd.colSpan = state.semanas.length + 5;
     aTd.innerHTML = `<span class="area-icon"><i class="ti ${area.icon}" style="font-size:14px;color:${area.cor}"></i>${area.nome}</span>`;
     aRow.appendChild(aTd);
     tbody.appendChild(aRow);
@@ -2208,7 +2226,7 @@ function renderBody() {
         const spacerRow = document.createElement('tr');
         spacerRow.className = 'indicator-row spacer-row';
         const spacerTd = document.createElement('td');
-        spacerTd.colSpan = state.semanas.length + 4;
+        spacerTd.colSpan = state.semanas.length + 5;
         spacerTd.innerHTML = `<span class="spacer-row-actions">
           <button onclick="insertSpacerAt('${area.id}',${ii})"
             class="row-action-btn"
@@ -2450,6 +2468,19 @@ function renderBody() {
       tdMeta.appendChild(mtWrap);
       row.appendChild(tdMeta);
 
+      const tdVarDiff = document.createElement('td');
+      tdVarDiff.className = 'vardiff-cell';
+      const vv = calcVarDiff(valMes, valMeta);
+      if (vv === null) {
+        tdVarDiff.innerHTML = `<span class="var-neu">-</span>`;
+      } else {
+        const cls = vv > 0 ? 'var-pos' : vv < 0 ? 'var-neg' : 'var-neu';
+        const ic = vv > 0 ? 'ti-trending-up' : vv < 0 ? 'ti-trending-down' : 'ti-minus';
+        tdVarDiff.innerHTML = `<span class="${cls}" style="display:flex;align-items:center;justify-content:center;gap:3px">
+          <i class="ti ${ic}" style="font-size:12px"></i>${formatNum(vv, unit)}</span>`;
+      }
+      row.appendChild(tdVarDiff);
+
       const tdV = document.createElement('td');
       tdV.className = 'var-cell';
       const vp = calcVar(valMes, valMeta);
@@ -2467,7 +2498,7 @@ function renderBody() {
 
     const addRow = document.createElement('tr');
     const addTd = document.createElement('td');
-    addTd.colSpan = state.semanas.length + 4;
+    addTd.colSpan = state.semanas.length + 5;
     addTd.innerHTML = `<div style="display:${canEditRows ? 'flex' : 'none'};align-items:center;gap:8px">
       <button class="add-btn" style="width:auto;padding-left:20px" onclick="addIndicador('${area.id}')">
         <i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> adicionar indicador</button>
@@ -2645,6 +2676,11 @@ function renderPresentBody() {
   tr.appendChild(th);
 
   th = document.createElement('th');
+  th.className = 'vardiff-col';
+  th.innerHTML = makeHeaderContent(`<i class="ti ti-minus-vertical" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>Variação`, 'vardiff');
+  tr.appendChild(th);
+
+  th = document.createElement('th');
   th.className = 'var-col';
   th.innerHTML = makeHeaderContent(`<i class="ti ti-trending-up" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>Variação %`, 'var');
   tr.appendChild(th);
@@ -2654,7 +2690,7 @@ function renderPresentBody() {
     const aRow = document.createElement('tr');
     aRow.className = 'area-header-row';
     const aTd = document.createElement('td');
-    aTd.colSpan = state.semanas.length + 4;
+    aTd.colSpan = state.semanas.length + 5;
     aTd.innerHTML = `<span class="area-icon"><i class="ti ${area.icon}" style="font-size:14px;color:${area.cor}"></i>${area.nome}</span>`;
     aRow.appendChild(aTd);
     tbody.appendChild(aRow);
@@ -2664,7 +2700,7 @@ function renderPresentBody() {
         const spacerRow = document.createElement('tr');
         spacerRow.className = 'indicator-row spacer-row';
         const spacerTd = document.createElement('td');
-        spacerTd.colSpan = state.semanas.length + 4;
+        spacerTd.colSpan = state.semanas.length + 5;
         spacerTd.innerHTML = '&nbsp;';
         spacerRow.appendChild(spacerTd);
         tbody.appendChild(spacerRow);
@@ -2697,6 +2733,7 @@ function renderPresentBody() {
 
       const valMes = calcMes(area.id, ind, { focusedSemana });
       const valMeta = calcMeta(area.id, ind, { focusedSemana });
+      const vv = calcVarDiff(valMes, valMeta);
       const vp = calcVar(valMes, valMeta);
 
       const tdMes = document.createElement('td');
@@ -2708,6 +2745,17 @@ function renderPresentBody() {
       tdMeta.className = 'meta-cell';
       tdMeta.innerHTML = `<div class="present-cell-wrap"><span class="present-cell-val p-meta-val">${formatNum(valMeta, unit)}</span></div>`;
       row.appendChild(tdMeta);
+
+      const tdVarDiff = document.createElement('td');
+      tdVarDiff.className = 'vardiff-cell';
+      if (vv === null) {
+        tdVarDiff.innerHTML = `<div class="present-cell-wrap"><span class="p-var-neu">-</span></div>`;
+      } else {
+        const cls = vv > 0 ? 'p-var-pos' : vv < 0 ? 'p-var-neg' : 'p-var-neu';
+        const ic = vv > 0 ? 'ti-trending-up' : vv < 0 ? 'ti-trending-down' : 'ti-minus';
+        tdVarDiff.innerHTML = `<div class="present-cell-wrap"><span class="${cls}"><i class="ti ${ic}" style="font-size:11px"></i>${formatNum(vv, unit)}</span></div>`;
+      }
+      row.appendChild(tdVarDiff);
 
       const tdVar = document.createElement('td');
       tdVar.className = 'var-cell';
@@ -2862,7 +2910,7 @@ function updateMonthLabel() {
 }
 
 function exportData() {
-  const rows = [['Área','Indicador',...state.semanas,'Mês','Meta','Variação%'].join('\t')];
+  const rows = [['Área','Indicador',...state.semanas,'Mês','Meta','Variação','Variação%'].join('\t')];
   state.areas.forEach(a => {
     getIndicators(a.id).forEach(ind => {
       if (isSpacerIndicator(ind)) return;
@@ -2873,6 +2921,7 @@ function exportData() {
       });
       const mes = calcMes(a.id, ind);
       const meta = calcMeta(a.id, ind);
+      const vv = calcVarDiff(mes, meta);
       const vp = calcVar(mes, meta);
       rows.push([
         a.nome,
@@ -2880,6 +2929,7 @@ function exportData() {
         ...vals,
         mes !== null ? formatNum(mes, unit) : '',
         meta !== null ? formatNum(meta, unit) : '',
+        vv !== null ? formatNum(vv, unit) : '',
         vp !== null ? vp.toFixed(1) + '%' : ''
       ].join('\t'));
     });

@@ -274,6 +274,7 @@ th.week-th:hover   { background: #B5D4F4; color: #0C447C; }
 th.week-th.focused { background: #185FA5; color: #fff; }
 th.consol-col  { background: #EAF3DE; color: #3B6D11; }
 th.meta-col    { background: #FAEEDA; color: #633806; width: 12ch; min-width: 12ch; }
+th.vardiff-col { background: #E9F3EA; color: #235130; width: 12ch; min-width: 12ch; }
 th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12ch; }
 
 /* modo ícone na célula de meta - por linha */
@@ -852,6 +853,7 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
 /* COLUNAS MES E META (novas) */
 th.mes-col  { background: var(--color-bg-secondary); color: var(--color-text-secondary); width: 12ch; min-width: 12ch; }
 th.meta-col { background: var(--color-bg-secondary); color: var(--color-text-secondary); width: 12ch; min-width: 12ch; }
+th.vardiff-col { background: var(--color-bg-secondary); color: var(--color-text-secondary); width: 12ch; min-width: 12ch; }
 th.var-col  { background: var(--color-bg-secondary); color: var(--color-text-secondary); width: 12ch; min-width: 12ch; }
 
 td.mes-cell  { background: transparent; }
