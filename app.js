@@ -760,6 +760,18 @@ function toggleAuthMode() {
   renderAuthMode();
 }
 
+function getPasswordResetRedirectUrl() {
+  try {
+    const href = window.location?.href || '';
+    if (!/^https?:/i.test(href)) return null;
+    const url = new URL(href);
+    url.hash = '';
+    return url.toString();
+  } catch (_) {
+    return null;
+  }
+}
+
 async function requestPasswordReset() {
   if (!supabaseClient) {
     setLoginMessage('Supabase não configurado para recuperação de senha.', 'error');
@@ -774,17 +786,20 @@ async function requestPasswordReset() {
 
   setLoginBusy(true);
   setLoginMessage('Enviando email de recuperação...');
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizeEmail(email), {
-    redirectTo: window.location.href,
-  });
-
-  setLoginBusy(false);
-  if (error) {
-    setLoginMessage(error.message || 'Não foi possível enviar o email de recuperação.', 'error');
-    return;
+  try {
+    const redirectTo = getPasswordResetRedirectUrl();
+    const options = redirectTo ? { redirectTo } : undefined;
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizeEmail(email), options);
+    if (error) {
+      setLoginMessage(error.message || 'Não foi possível enviar o email de recuperação.', 'error');
+      return;
+    }
+    setLoginMessage('Email de recuperação enviado. Abra o link para redefinir sua senha.', 'success');
+  } catch (error) {
+    setLoginMessage(error?.message || 'Falha inesperada ao solicitar recuperação de senha.', 'error');
+  } finally {
+    setLoginBusy(false);
   }
-
-  setLoginMessage('Email de recuperação enviado. Abra o link para redefinir sua senha.', 'success');
 }
 
 function renderSyncStatus() {
@@ -1191,18 +1206,22 @@ async function submitLogin(event) {
 
     setLoginBusy(true);
     setLoginMessage('Atualizando sua senha...');
-    const { error } = await supabaseClient.auth.updateUser({ password });
-    setLoginBusy(false);
+    try {
+      const { error } = await supabaseClient.auth.updateUser({ password });
+      if (error) {
+        setLoginMessage(error.message || 'Não foi possível atualizar sua senha.', 'error');
+        return;
+      }
 
-    if (error) {
-      setLoginMessage(error.message || 'Não foi possível atualizar sua senha.', 'error');
-      return;
+      state.auth.mode = 'login';
+      renderAuthMode();
+      authPostLogoutMessage = 'Senha redefinida com sucesso. Faça login com a nova senha.';
+      await supabaseClient.auth.signOut();
+    } catch (error) {
+      setLoginMessage(error?.message || 'Falha inesperada ao atualizar a senha.', 'error');
+    } finally {
+      setLoginBusy(false);
     }
-
-    state.auth.mode = 'login';
-    renderAuthMode();
-    setLoginMessage('Senha redefinida com sucesso. Entre novamente.', 'success');
-    await supabaseClient.auth.signOut();
     return;
   }
 
@@ -1233,35 +1252,37 @@ async function submitLogin(event) {
   setLoginBusy(true);
   setLoginMessage(isSignup ? 'Criando seu acesso...' : 'Validando credenciais...');
 
-  if (isSignup) {
-    const { data, error } = await supabaseClient.auth.signUp({
-      email: emailNormalized,
-      password,
-    });
+  try {
+    if (isSignup) {
+      const { data, error } = await supabaseClient.auth.signUp({
+        email: emailNormalized,
+        password,
+      });
 
-    if (error) {
-      setLoginBusy(false);
-      setLoginMessage(error.message || 'Não foi possível criar sua senha.', 'error');
+      if (error) {
+        setLoginMessage(error.message || 'Não foi possível criar sua senha.', 'error');
+        return;
+      }
+
+      if (!data.session) {
+        setLoginMessage('Cadastro iniciado. Confirme o email, se o Supabase exigir confirmação.', 'success');
+      } else {
+        setLoginMessage('Senha criada com sucesso. Você já está autenticado.', 'success');
+      }
+      state.auth.mode = 'login';
+      renderAuthMode();
       return;
     }
 
-    setLoginBusy(false);
-    if (!data.session) {
-      setLoginMessage('Cadastro iniciado. Confirme o email, se o Supabase exigir confirmação.', 'success');
-    } else {
-      setLoginMessage('Senha criada com sucesso. Você já está autenticado.', 'success');
+    const { error } = await supabaseClient.auth.signInWithPassword({ email: emailNormalized, password });
+    if (error) {
+      setLoginMessage(error.message || 'Email ou senha inválidos.', 'error');
+      return;
     }
-    state.auth.mode = 'login';
-    renderAuthMode();
-    return;
-  }
-
-  const { error } = await supabaseClient.auth.signInWithPassword({ email: emailNormalized, password });
-
-  if (error) {
+  } catch (error) {
+    setLoginMessage(error?.message || 'Falha inesperada durante a autenticação.', 'error');
+  } finally {
     setLoginBusy(false);
-    setLoginMessage('Email ou senha inválidos.', 'error');
-    return;
   }
 }
 
