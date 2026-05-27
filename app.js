@@ -840,6 +840,10 @@ function canEditData() {
   return !!state.auth.profile && state.auth.profile.role !== 'viewer';
 }
 
+function isEditorUser() {
+  return state.auth.profile?.role === 'editor';
+}
+
 function canEditStructure() {
   return isAdminUser();
 }
@@ -885,6 +889,15 @@ function getIndicatorPolicyLabel(ind) {
   if (fields.semanas && fields.mes && fields.meta) return 'Tudo liberado';
   if (fields.semanas && !fields.mes && !fields.meta) return 'Só semanas';
   return 'Personalizado';
+}
+
+function hasFormulaCellValue(raw) {
+  return typeof raw === 'string' && raw.trim().startsWith('=');
+}
+
+function isFormulaIndicatorRow(areaId, ind) {
+  if (isAggregateIndicator(ind)) return true;
+  return state.semanas.some(semana => hasFormulaCellValue(state.dados[key(areaId, ind.id, semana)]));
 }
 
 function setAdminMessage(message, type = '') {
@@ -1344,8 +1357,7 @@ function renderAdminUsers() {
           type="text"
           value="${escapeHtml(getDisplayName(user, user.email))}"
           placeholder="Nome do usuário"
-          onchange="updateAppUserName('${user.id}', this.value)"
-          ${user.email === ADMIN_EMAIL ? 'disabled' : ''}>
+          onchange="updateAppUserName('${user.id}', this.value)">
       </div>
       <div class="admin-user-email">${user.email}</div>
       <div>
@@ -2324,6 +2336,9 @@ function renderBody() {
 
       const row = document.createElement('tr');
       row.className = 'indicator-row';
+      if (isEditorUser() && isFormulaIndicatorRow(area.id, ind)) {
+        row.classList.add('editor-formula-row');
+      }
       const unit = getUnit(area.id, ind);
       const isAggregate = isAggregateIndicator(ind);
       const isChild = !!ind.parentId;

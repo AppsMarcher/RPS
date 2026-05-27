@@ -296,6 +296,33 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
   font-size: 12px; color: var(--color-text-secondary);
   padding: 5px 10px 5px 20px; white-space: nowrap;
 }
+.indicator-row.editor-formula-row td {
+  background: #f0f0ed;
+}
+.indicator-row.editor-formula-row td,
+.indicator-row.editor-formula-row .calc-val,
+.indicator-row.editor-formula-row .unit-tag,
+.indicator-row.editor-formula-row .clip-btn,
+.indicator-row.editor-formula-row .var-pos,
+.indicator-row.editor-formula-row .var-neg,
+.indicator-row.editor-formula-row .var-neu {
+  color: transparent !important;
+}
+.indicator-row.editor-formula-row .cell-input {
+  color: transparent !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  text-shadow: none !important;
+}
+.indicator-row.editor-formula-row .mode-icon-btn,
+.indicator-row.editor-formula-row .row-action-btn,
+.indicator-row.editor-formula-row .clip-count,
+.indicator-row.editor-formula-row td.has-comment::after {
+  opacity: 0 !important;
+}
+.indicator-row.editor-formula-row .cell-input::placeholder {
+  color: transparent !important;
+}
 .row-action-btn {
   background: none;
   border: none;
