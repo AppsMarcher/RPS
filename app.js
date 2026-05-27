@@ -46,6 +46,14 @@ let state = {
   focusIdx:   null,
   presentIdx: 0,
   columnWidths: {},
+  auth: {
+    user: null,
+    checked: false,
+    loadedUserId: null,
+    profile: null,
+    users: [],
+    mode: 'login',
+  },
   sync: {
     enabled: false,
     dirty: false,
@@ -70,6 +78,8 @@ let resizeState = null;
 let supabaseClient = null;
 let saveTimer = null;
 let syncMessageTimer = null;
+let authSubscription = null;
+let authPostLogoutMessage = '';
 
 const COLUMN_WIDTH_DEFAULTS = {
   area: 620,
@@ -84,6 +94,8 @@ const COLUMN_WIDTH_DEFAULTS = {
 };
 
 const SUPABASE_TABLE = 'rps_snapshots';
+const APP_USERS_TABLE = 'app_users';
+const ADMIN_EMAIL = 'ricardo@marcher.com.br';
 
 const key        = (a,i,c)  => `${a}|${i}|${c}`;
 const anexoKey   = (a,i,c)  => `anx:${a}|${i}|${c}`;
@@ -190,6 +202,120 @@ function getPeriodoLabel() {
   return `${MESES[state.mesIdx]} ${state.ano}`;
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function setLoginMessage(message, type = '') {
+  const el = document.getElementById('login-message');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `login-message${type ? ` is-${type}` : ''}`;
+}
+
+function setLoginBusy(isBusy) {
+  const submitBtn = document.getElementById('login-submit');
+  const emailInput = document.getElementById('login-email');
+  const passwordInput = document.getElementById('login-password');
+  const isSignup = state.auth.mode === 'signup';
+  if (submitBtn) {
+    submitBtn.disabled = isBusy;
+    submitBtn.innerHTML = isBusy
+      ? `<i class="ti ti-loader-2"></i> ${isSignup ? 'Criando acesso...' : 'Entrando...'}` 
+      : (isSignup ? '<i class="ti ti-user-plus"></i> Criar senha' : '<i class="ti ti-login-2"></i> Entrar');
+  }
+  if (emailInput) emailInput.disabled = isBusy;
+  if (passwordInput) passwordInput.disabled = isBusy;
+}
+
+function showLoginScreen() {
+  document.getElementById('login-shell')?.classList.remove('hidden');
+  document.getElementById('app-shell')?.classList.add('hidden');
+  closeAdminPanel();
+}
+
+function showAppShell() {
+  document.getElementById('login-shell')?.classList.add('hidden');
+  document.getElementById('app-shell')?.classList.remove('hidden');
+}
+
+function renderAuthHeader() {
+  const userBadge = document.getElementById('user-badge');
+  const adminBtn = document.getElementById('admin-btn');
+  const addAreaBtn = document.getElementById('add-area-btn');
+  if (!userBadge) return;
+  const email = state.auth.user?.email || '';
+  const role = state.auth.profile?.role || '';
+  userBadge.textContent = email ? `${email}${role ? ` · ${role}` : ''}` : '';
+  if (adminBtn) {
+    adminBtn.classList.toggle('hidden', !isAdminUser());
+  }
+  if (addAreaBtn) {
+    addAreaBtn.classList.toggle('hidden', !canEditRps());
+  }
+}
+
+function validateEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function validatePassword(password) {
+  return String(password || '').trim().length >= 6;
+}
+
+function isAdminUser() {
+  return state.auth.profile?.role === 'admin';
+}
+
+function canEditRps() {
+  return !!state.auth.profile && state.auth.profile.role !== 'viewer';
+}
+
+function setAdminMessage(message, type = '') {
+  const el = document.getElementById('admin-message');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `login-message${type ? ` is-${type}` : ''}`;
+}
+
+function renderAuthMode() {
+  const heading = document.getElementById('login-form-heading');
+  const submitBtn = document.getElementById('login-submit');
+  const modeBtn = document.getElementById('auth-mode-btn');
+  const help = document.getElementById('auth-mode-help');
+  const confirmWrap = document.getElementById('login-confirm-wrap');
+  const passwordInput = document.getElementById('login-password');
+  const confirmInput = document.getElementById('login-password-confirm');
+  const isSignup = state.auth.mode === 'signup';
+
+  if (heading) heading.textContent = isSignup ? 'Primeiro acesso' : 'Entrar';
+  if (submitBtn) {
+    submitBtn.innerHTML = isSignup
+      ? '<i class="ti ti-user-plus"></i> Criar senha'
+      : '<i class="ti ti-login-2"></i> Entrar';
+  }
+  if (modeBtn) {
+    modeBtn.textContent = isSignup ? 'Já tenho senha' : 'Primeiro acesso';
+  }
+  if (help) {
+    help.textContent = isSignup
+      ? 'Use um email previamente liberado pelo administrador para criar sua senha.'
+      : 'Se seu email já foi liberado pelo administrador, use “Primeiro acesso” para criar sua senha.';
+  }
+  if (confirmWrap) confirmWrap.classList.toggle('hidden', !isSignup);
+  if (passwordInput) passwordInput.autocomplete = isSignup ? 'new-password' : 'current-password';
+  if (!isSignup && confirmInput) confirmInput.value = '';
+}
+
+function toggleAuthMode() {
+  state.auth.mode = state.auth.mode === 'login' ? 'signup' : 'login';
+  setLoginBusy(false);
+  setLoginMessage(state.auth.mode === 'login'
+    ? 'Entre com seu email e senha para acessar a RPS.'
+    : 'Crie sua senha usando um email já autorizado.');
+  renderAuthMode();
+}
+
 function renderSyncStatus() {
   const badge = document.getElementById('sync-badge');
   const label = document.getElementById('sync-label');
@@ -239,6 +365,8 @@ function hasSupabaseConfig() {
 
 function initSupabase() {
   if (!hasSupabaseConfig()) {
+    showLoginScreen();
+    setLoginMessage('Supabase não configurado para autenticação.', 'error');
     state.sync.enabled = false;
     setSyncStatus('offline', 'Sincronização automática indisponível', false);
     return;
@@ -248,6 +376,45 @@ function initSupabase() {
   supabaseClient = window.supabase.createClient(cfg.url, cfg.anonKey);
   state.sync.enabled = true;
   setSyncStatus('ready', `Sincronização automática pronta para ${getPeriodoLabel()}`, false);
+}
+
+async function fetchAppUserByEmail(email) {
+  if (!supabaseClient) return null;
+  const normalized = normalizeEmail(email);
+  const { data, error } = await supabaseClient
+    .from(APP_USERS_TABLE)
+    .select('*')
+    .eq('email', normalized)
+    .maybeSingle();
+
+  if (error) return null;
+  return data;
+}
+
+async function canStartFirstAccess(email) {
+  if (!supabaseClient) return false;
+  const normalized = normalizeEmail(email);
+  const { data, error } = await supabaseClient.rpc('is_signup_allowed', {
+    p_email: normalized,
+  });
+  if (error) return false;
+  return !!data;
+}
+
+async function loadAdminUsers() {
+  if (!supabaseClient || !isAdminUser()) return;
+  const { data, error } = await supabaseClient
+    .from(APP_USERS_TABLE)
+    .select('*')
+    .order('email', { ascending: true });
+
+  if (error) {
+    setAdminMessage('Não foi possível carregar os usuários autorizados.', 'error');
+    return;
+  }
+
+  state.auth.users = data || [];
+  renderAdminUsers();
 }
 
 function resetStateData() {
@@ -262,6 +429,14 @@ function resetStateData() {
   state.modoMeta = {};
   state.focusIdx = null;
   state.presentIdx = 0;
+}
+
+function resetForSignedOut() {
+  clearTimeout(saveTimer);
+  closePresent();
+  resetStateData();
+  initData();
+  renderAll();
 }
 
 function buildSnapshotPayload() {
@@ -300,6 +475,7 @@ function applySnapshotPayload(payload) {
 function renderAll() {
   updateMonthLabel();
   updateFocusBadge();
+  renderAuthHeader();
   const pMonth = document.getElementById('p-month-label');
   if (pMonth) pMonth.textContent = getPeriodoLabel();
   renderHeader();
@@ -308,6 +484,62 @@ function renderAll() {
     renderPresentBody();
   }
   renderSyncStatus();
+}
+
+function openAdminPanel() {
+  if (!isAdminUser()) return;
+  document.getElementById('admin-overlay')?.classList.add('open');
+  setAdminMessage('Cadastre os emails que poderão fazer primeiro acesso.');
+  loadAdminUsers();
+}
+
+function closeAdminPanel() {
+  document.getElementById('admin-overlay')?.classList.remove('open');
+}
+
+function renderAdminUsers() {
+  const list = document.getElementById('admin-users-list');
+  if (!list) return;
+
+  if (!state.auth.users.length) {
+    list.innerHTML = '<div class="admin-empty">Nenhum usuário autorizado ainda.</div>';
+    return;
+  }
+
+  const rows = state.auth.users.map(user => `
+    <div class="admin-user-row">
+      <div class="admin-user-email">${user.email}</div>
+      <div>
+        <select class="admin-select" onchange="updateAppUserRole('${user.id}', this.value)" ${user.email === ADMIN_EMAIL ? 'disabled' : ''}>
+          <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+          <option value="editor" ${user.role === 'editor' ? 'selected' : ''}>Editor</option>
+          <option value="viewer" ${user.role === 'viewer' ? 'selected' : ''}>Viewer</option>
+        </select>
+      </div>
+      <div>
+        <label class="admin-check">
+          <input type="checkbox" ${user.active ? 'checked' : ''} onchange="updateAppUserFlags('${user.id}', 'active', this.checked)" ${user.email === ADMIN_EMAIL ? 'disabled' : ''}>
+          <span>Ativo</span>
+        </label>
+      </div>
+      <div>
+        <label class="admin-check">
+          <input type="checkbox" ${user.can_access ? 'checked' : ''} onchange="updateAppUserFlags('${user.id}', 'can_access', this.checked)" ${user.email === ADMIN_EMAIL ? 'disabled' : ''}>
+          <span>Acesso</span>
+        </label>
+      </div>
+    </div>
+  `).join('');
+
+  list.innerHTML = `
+    <div class="admin-user-row header">
+      <div>Email</div>
+      <div>Perfil</div>
+      <div>Ativo</div>
+      <div>Acesso</div>
+    </div>
+    ${rows}
+  `;
 }
 
 function markDirty() {
@@ -379,6 +611,216 @@ async function reloadFromCloud(silent = false) {
   setSyncStatus('ready', `Dados carregados: ${getPeriodoLabel()}`, false);
   if (!silent) scheduleSyncMessageReset();
   return true;
+}
+
+async function applyAuthSession(session) {
+  state.auth.checked = true;
+  state.auth.user = session?.user || null;
+
+  if (!state.auth.user) {
+    state.auth.loadedUserId = null;
+    state.auth.profile = null;
+    state.auth.users = [];
+    resetForSignedOut();
+    showLoginScreen();
+    setLoginBusy(false);
+    if (authPostLogoutMessage) {
+      setLoginMessage(authPostLogoutMessage, 'error');
+      authPostLogoutMessage = '';
+    } else {
+      setLoginMessage('Entre com seu email e senha para acessar a RPS.');
+    }
+    return;
+  }
+
+  const profile = await fetchAppUserByEmail(state.auth.user.email);
+  if (!profile || !profile.active || !profile.can_access) {
+    state.auth.profile = null;
+    state.auth.users = [];
+    setLoginBusy(false);
+    authPostLogoutMessage = 'Seu email não está autorizado para acessar este app.';
+    await supabaseClient.auth.signOut();
+    return;
+  }
+
+  state.auth.profile = profile;
+
+  showAppShell();
+  setLoginBusy(false);
+  setLoginMessage('Login realizado com sucesso.', 'success');
+  renderAll();
+
+  if (state.auth.loadedUserId !== state.auth.user.id && state.sync.enabled) {
+    state.auth.loadedUserId = state.auth.user.id;
+    await reloadFromCloud(true);
+  }
+
+  if (isAdminUser()) {
+    await loadAdminUsers();
+  }
+}
+
+function registerAuthListener() {
+  if (!supabaseClient) return;
+  if (authSubscription) {
+    authSubscription.unsubscribe();
+    authSubscription = null;
+  }
+
+  const { data } = supabaseClient.auth.onAuthStateChange((event, session) => {
+    window.setTimeout(() => {
+      applyAuthSession(session);
+    }, 0);
+  });
+
+  authSubscription = data.subscription;
+}
+
+async function submitLogin(event) {
+  event.preventDefault();
+  if (!supabaseClient) {
+    setLoginMessage('Supabase não configurado para autenticação.', 'error');
+    return;
+  }
+
+  const email = document.getElementById('login-email')?.value.trim() || '';
+  const password = document.getElementById('login-password')?.value || '';
+  const emailNormalized = normalizeEmail(email);
+  const isSignup = state.auth.mode === 'signup';
+
+  if (!validateEmail(email)) {
+    setLoginMessage('Informe um email válido.', 'error');
+    return;
+  }
+
+  if (!validatePassword(password)) {
+    setLoginMessage('A senha precisa ter pelo menos 6 caracteres.', 'error');
+    return;
+  }
+
+  if (isSignup) {
+    const confirmPassword = document.getElementById('login-password-confirm')?.value || '';
+    if (password !== confirmPassword) {
+      setLoginMessage('A confirmação da senha não confere.', 'error');
+      return;
+    }
+
+    const signupAllowed = await canStartFirstAccess(emailNormalized);
+    if (!signupAllowed) {
+      setLoginMessage('Este email ainda não foi liberado pelo administrador.', 'error');
+      return;
+    }
+  }
+
+  setLoginBusy(true);
+  setLoginMessage(isSignup ? 'Criando seu acesso...' : 'Validando credenciais...');
+
+  if (isSignup) {
+    const { data, error } = await supabaseClient.auth.signUp({
+      email: emailNormalized,
+      password,
+    });
+
+    if (error) {
+      setLoginBusy(false);
+      setLoginMessage(error.message || 'Não foi possível criar sua senha.', 'error');
+      return;
+    }
+
+    setLoginBusy(false);
+    if (!data.session) {
+      setLoginMessage('Cadastro iniciado. Confirme o email, se o Supabase exigir confirmação.', 'success');
+    } else {
+      setLoginMessage('Senha criada com sucesso. Você já está autenticado.', 'success');
+    }
+    state.auth.mode = 'login';
+    renderAuthMode();
+    return;
+  }
+
+  const { error } = await supabaseClient.auth.signInWithPassword({ email: emailNormalized, password });
+
+  if (error) {
+    setLoginBusy(false);
+    setLoginMessage('Email ou senha inválidos.', 'error');
+    return;
+  }
+}
+
+async function submitAdminUser(event) {
+  event.preventDefault();
+  if (!supabaseClient || !isAdminUser()) return;
+
+  const email = normalizeEmail(document.getElementById('admin-email')?.value);
+  const role = document.getElementById('admin-role')?.value || 'editor';
+  const active = !!document.getElementById('admin-active')?.checked;
+  const canAccess = !!document.getElementById('admin-can-access')?.checked;
+
+  if (!validateEmail(email)) {
+    setAdminMessage('Informe um email válido para liberar acesso.', 'error');
+    return;
+  }
+
+  const { error } = await supabaseClient
+    .from(APP_USERS_TABLE)
+    .upsert({
+      email,
+      role,
+      active,
+      can_access: canAccess,
+    }, { onConflict: 'email' });
+
+  if (error) {
+    setAdminMessage('Não foi possível salvar esse acesso.', 'error');
+    return;
+  }
+
+  document.getElementById('admin-user-form')?.reset();
+  document.getElementById('admin-role').value = 'editor';
+  document.getElementById('admin-active').checked = true;
+  document.getElementById('admin-can-access').checked = true;
+  setAdminMessage('Acesso salvo. O usuário já pode usar “Primeiro acesso”.', 'success');
+  await loadAdminUsers();
+}
+
+async function updateAppUserFlags(userId, field, value) {
+  if (!supabaseClient || !isAdminUser()) return;
+  const patch = field === 'active' ? { active: value } : { can_access: value };
+  const { error } = await supabaseClient
+    .from(APP_USERS_TABLE)
+    .update(patch)
+    .eq('id', userId);
+
+  if (error) {
+    setAdminMessage('Não foi possível atualizar esse usuário.', 'error');
+    await loadAdminUsers();
+    return;
+  }
+
+  setAdminMessage('Acesso atualizado com sucesso.', 'success');
+  await loadAdminUsers();
+}
+
+async function updateAppUserRole(userId, role) {
+  if (!supabaseClient || !isAdminUser()) return;
+  const { error } = await supabaseClient
+    .from(APP_USERS_TABLE)
+    .update({ role })
+    .eq('id', userId);
+
+  if (error) {
+    setAdminMessage('Não foi possível atualizar o perfil.', 'error');
+    await loadAdminUsers();
+    return;
+  }
+
+  setAdminMessage('Perfil atualizado com sucesso.', 'success');
+  await loadAdminUsers();
+}
+
+async function logout() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
 }
 
 function makeHeaderContent(labelHtml, colKey, clickable = false, clickJs = '') {
@@ -566,7 +1008,7 @@ function getModoMetaObj(aId, ind) {
 }
 
 function cycleModoMes(aId, ind) {
-  if (isAggregateIndicator(ind)) return;
+  if (isAggregateIndicator(ind) || !canEditRps()) return;
   const cur = state.modoMes[modoMesK(aId, ind.id)] || 'soma';
   const idx = MES_MODOS.findIndex(m => m.id === cur);
   state.modoMes[modoMesK(aId, ind.id)] = MES_MODOS[(idx + 1) % MES_MODOS.length].id;
@@ -575,7 +1017,7 @@ function cycleModoMes(aId, ind) {
 }
 
 function cycleModoMeta(aId, ind) {
-  if (isAggregateIndicator(ind)) return;
+  if (isAggregateIndicator(ind) || !canEditRps()) return;
   const cur = state.modoMeta[modoMetaK(aId, ind.id)] || 'manual';
   const idx = MES_MODOS.findIndex(m => m.id === cur);
   state.modoMeta[modoMetaK(aId, ind.id)] = MES_MODOS[(idx + 1) % MES_MODOS.length].id;
@@ -783,6 +1225,7 @@ fileInput.addEventListener('change', () => {
 });
 
 function triggerUpload(ak, lbl) {
+  if (!canEditRps()) return;
   pendKey = ak;
   pendLbl = lbl;
   fileInput.click();
@@ -854,6 +1297,7 @@ function renderHeader() {
 function renderBody() {
   const tbody = document.getElementById('table-body');
   tbody.innerHTML = '';
+  const editable = canEditRps();
 
   state.areas.forEach(area => {
     const aRow = document.createElement('tr');
@@ -884,11 +1328,11 @@ function renderBody() {
 
       const tdL = document.createElement('td');
       tdL.innerHTML = `<span style="display:flex;align-items:center;gap:6px;justify-content:space-between">
-        <span contenteditable="true" style="flex:1;outline:none;padding:2px 3px 2px ${isChild ? '18px' : '3px'};border-radius:3px;font-weight:${isAggregate ? '600' : '400'}"
+        <span contenteditable="${editable}" style="flex:1;outline:none;padding:2px 3px 2px ${isChild ? '18px' : '3px'};border-radius:3px;font-weight:${isAggregate ? '600' : '400'}"
           onblur="renameIndicador('${area.id}',${ii},this.textContent.trim())">${ind.label}</span>
         <span style="display:inline-flex;align-items:center;gap:6px">
           <button onclick="removeIndicador('${area.id}',${ii})"
-            style="background:none;border:none;cursor:pointer;color:#a0a09a;padding:0 2px;font-size:13px;line-height:1">x</button>
+            style="background:none;border:none;cursor:${editable ? 'pointer' : 'default'};color:#a0a09a;padding:0 2px;font-size:13px;line-height:1;visibility:${editable ? 'visible' : 'hidden'}">x</button>
         </span>
       </span>`;
       row.appendChild(tdL);
@@ -913,7 +1357,7 @@ function renderBody() {
         const rawVal = state.dados[k] || '';
         const calcVal = calcWeekValue(area.id, ind, s);
         inp.value = isAggregate ? formatNum(calcVal, unitCell) : (rawVal ? formatVal(rawVal, unitCell) : '');
-        inp.disabled = isAggregate;
+        inp.disabled = isAggregate || !editable;
         inp.onfocus = () => {
           inp.value = state.dados[inp.dataset.key] || '';
           inp.select();
@@ -933,6 +1377,7 @@ function renderBody() {
         us.textContent = unitCell;
         us.title = 'Alterar unidade';
         us.onclick = () => {
+          if (!editable) return;
           const c = UNIDADES.indexOf(state.unidades[k] || 'R$');
           state.unidades[k] = UNIDADES[(c + 1) % UNIDADES.length];
           state.semanas.forEach(col => {
@@ -951,7 +1396,10 @@ function renderBody() {
           cb.onmouseenter = e => showTooltip(e, previewAtt, lbl);
           cb.onmouseleave = hideTooltip;
         }
-        cb.onclick = () => triggerUpload(ak, lbl);
+        cb.onclick = () => {
+          if (!editable) return;
+          triggerUpload(ak, lbl);
+        };
 
         wrap.appendChild(inp);
         wrap.appendChild(us);
@@ -972,6 +1420,7 @@ function renderBody() {
         inp2.className = 'cell-input';
         inp2.style.textAlign = 'right';
         inp2.placeholder = '-';
+        inp2.disabled = !editable;
         const rawMes = state.dadosMes[dadosMesK(area.id, ind.id)] || '';
         inp2.value = rawMes ? formatVal(rawMes, unit) : '';
         inp2.onfocus = () => {
@@ -1000,7 +1449,7 @@ function renderBody() {
       mBtn.className = 'mode-icon-btn';
       mBtn.title = modoMesObj.label;
       mBtn.innerHTML = `<i class="ti ${modoMesObj.icon}"></i>`;
-      mBtn.style.visibility = isAggregate ? 'hidden' : 'visible';
+      mBtn.style.visibility = isAggregate || !editable ? 'hidden' : 'visible';
       mBtn.onclick = () => cycleModoMes(area.id, ind);
       mWrap.appendChild(mBtn);
       tdMes.appendChild(mWrap);
@@ -1018,6 +1467,7 @@ function renderBody() {
         inp3.className = 'cell-input';
         inp3.style.textAlign = 'right';
         inp3.placeholder = '-';
+        inp3.disabled = !editable;
         const rawMeta = state.dadosMeta[dadosMetaK(area.id, ind.id)] || '';
         inp3.value = rawMeta ? formatVal(rawMeta, unit) : '';
         inp3.onfocus = () => {
@@ -1046,7 +1496,7 @@ function renderBody() {
       mtBtn.className = 'mode-icon-btn';
       mtBtn.title = modoMetaObj.label;
       mtBtn.innerHTML = `<i class="ti ${modoMetaObj.icon}"></i>`;
-      mtBtn.style.visibility = isAggregate ? 'hidden' : 'visible';
+      mtBtn.style.visibility = isAggregate || !editable ? 'hidden' : 'visible';
       mtBtn.onclick = () => cycleModoMeta(area.id, ind);
       mtWrap.appendChild(mtBtn);
       tdMeta.appendChild(mtWrap);
@@ -1070,7 +1520,7 @@ function renderBody() {
     const addRow = document.createElement('tr');
     const addTd = document.createElement('td');
     addTd.colSpan = state.semanas.length + 4;
-    addTd.innerHTML = `<div style="display:flex;align-items:center;gap:8px">
+    addTd.innerHTML = `<div style="display:${editable ? 'flex' : 'none'};align-items:center;gap:8px">
       <button class="add-btn" style="width:auto;padding-left:20px" onclick="addIndicador('${area.id}')">
         <i class="ti ti-plus" style="font-size:11px;vertical-align:-1px"></i> adicionar indicador</button>
       <button class="add-btn" style="width:auto;padding-left:0" onclick="addSpacer('${area.id}')">
@@ -1267,6 +1717,7 @@ function renderPresentBody() {
 }
 
 function renameIndicador(aId, idx, novo) {
+  if (!canEditRps()) return;
   if (!novo) return;
   getIndicators(aId)[idx].label = novo;
   markDirty();
@@ -1285,6 +1736,7 @@ function removeIndicatorData(aId, indId) {
 }
 
 function addIndicador(aId) {
+  if (!canEditRps()) return;
   getIndicators(aId).push(normalizeIndicator({ label:'Novo indicador', id:`novo_indicador_${Date.now()}` }));
   initData();
   renderBody();
@@ -1292,6 +1744,7 @@ function addIndicador(aId) {
 }
 
 function addSpacer(aId) {
+  if (!canEditRps()) return;
   getIndicators(aId).push(normalizeIndicator({ label:'', id:`spacer_${Date.now()}`, type:'spacer' }));
   initData();
   renderBody();
@@ -1299,6 +1752,7 @@ function addSpacer(aId) {
 }
 
 function removeIndicador(aId, idx) {
+  if (!canEditRps()) return;
   const indicators = getIndicators(aId);
   const target = indicators[idx];
   const idsToRemove = [target.id, ...getChildIndicators(aId, target.id).map(child => child.id)];
@@ -1309,6 +1763,7 @@ function removeIndicador(aId, idx) {
 }
 
 function addArea() {
+  if (!canEditRps()) return;
   const n = prompt('Nome da nova área:');
   if (!n) return;
   const id = n.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
@@ -1376,12 +1831,30 @@ function exportData() {
 }
 
 async function bootstrap() {
+  const loginForm = document.getElementById('login-form');
+  if (loginForm) {
+    loginForm.addEventListener('submit', submitLogin);
+  }
+  const adminUserForm = document.getElementById('admin-user-form');
+  if (adminUserForm) {
+    adminUserForm.addEventListener('submit', submitAdminUser);
+  }
+
+  showLoginScreen();
+  setLoginMessage('Entre com seu email e senha para acessar a RPS.');
+  renderAuthMode();
   loadColumnWidths();
   initData();
   initSupabase();
+  if (!supabaseClient) return;
+
+  registerAuthListener();
   renderAll();
-  if (state.sync.enabled) {
-    await reloadFromCloud(true);
+
+  const { data } = await supabaseClient.auth.getSession();
+  await applyAuthSession(data.session);
+  if (!state.auth.user) {
+    document.getElementById('login-email')?.focus();
   }
 }
 

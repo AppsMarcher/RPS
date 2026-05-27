@@ -9,7 +9,46 @@
 </head>
 <body>
 
-<div class="app">
+<div class="login-shell" id="login-shell">
+  <div class="login-card">
+    <div class="login-brand">
+      <img class="login-logo" src="Logo.png" alt="Marcher Brasil">
+      <div>
+        <div class="login-title">RPS - Marcher Brasil</div>
+        <div class="login-sub">Entre com email e senha para acessar a RPS</div>
+      </div>
+    </div>
+
+    <form class="login-form" id="login-form">
+      <div class="login-form-heading" id="login-form-heading">Entrar</div>
+      <label class="login-label" for="login-email">Email</label>
+      <input class="login-input" id="login-email" type="email" autocomplete="email" placeholder="seuemail@empresa.com">
+
+      <label class="login-label" for="login-password">Senha</label>
+      <input class="login-input" id="login-password" type="password" autocomplete="current-password" placeholder="Digite sua senha">
+
+      <div id="login-confirm-wrap" class="hidden">
+        <label class="login-label" for="login-password-confirm">Confirmar senha</label>
+        <input class="login-input" id="login-password-confirm" type="password" autocomplete="new-password" placeholder="Repita sua senha">
+      </div>
+
+      <div class="login-message" id="login-message">Use seu acesso do Supabase Auth.</div>
+
+      <button class="btn btn-primary login-submit" id="login-submit" type="submit">
+        <i class="ti ti-login-2"></i> Entrar
+      </button>
+
+      <button class="auth-mode-btn" id="auth-mode-btn" type="button" onclick="toggleAuthMode()">
+        Primeiro acesso
+      </button>
+      <div class="auth-mode-help" id="auth-mode-help">
+        Se seu email já foi liberado pelo administrador, use “Primeiro acesso” para criar sua senha.
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="app app-shell hidden" id="app-shell">
   <div class="header">
     <div class="header-left">
       <img class="header-logo" src="Logo.png" alt="Marcher Brasil">
@@ -19,6 +58,9 @@
       </div>
     </div>
     <div class="header-right">
+      <span class="user-badge" id="user-badge"></span>
+      <button class="btn hidden" id="admin-btn" onclick="openAdminPanel()"><i class="ti ti-shield-cog"></i> Admin</button>
+      <button class="btn" onclick="logout()"><i class="ti ti-logout"></i> Sair</button>
       <button class="btn btn-present" onclick="openPresent()"><i class="ti ti-presentation"></i> Apresentar</button>
       <button class="btn btn-primary" onclick="exportData()"><i class="ti ti-download"></i> Exportar</button>
     </div>
@@ -39,7 +81,7 @@
       <span id="sync-label">Sincronização automática indisponível</span>
     </span>
     <div style="flex:1"></div>
-    <button class="btn" onclick="addArea()"><i class="ti ti-plus"></i> Nova área</button>
+    <button class="btn" id="add-area-btn" onclick="addArea()"><i class="ti ti-plus"></i> Nova área</button>
   </div>
 
   <div class="table-wrap">
@@ -114,6 +156,56 @@
         <thead id="present-table-head"></thead>
         <tbody id="present-table-body"></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<div class="admin-overlay" id="admin-overlay" onclick="closeAdminPanel()">
+  <div class="admin-modal" onclick="event.stopPropagation()">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title">Gestão de acessos</div>
+        <div class="admin-sub">Defina quem pode criar senha e acessar a RPS.</div>
+      </div>
+      <button class="btn" type="button" onclick="closeAdminPanel()"><i class="ti ti-x"></i> Fechar</button>
+    </div>
+
+    <form class="admin-form" id="admin-user-form">
+      <div class="admin-grid">
+        <div>
+          <label class="login-label" for="admin-email">Email autorizado</label>
+          <input class="login-input" id="admin-email" type="email" placeholder="usuario@marcher.com.br">
+        </div>
+        <div>
+          <label class="login-label" for="admin-role">Perfil</label>
+          <select class="login-input" id="admin-role">
+            <option value="editor">Editor</option>
+            <option value="viewer">Viewer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="admin-checks">
+        <label class="admin-check">
+          <input type="checkbox" id="admin-active" checked>
+          <span>Conta ativa</span>
+        </label>
+        <label class="admin-check">
+          <input type="checkbox" id="admin-can-access" checked>
+          <span>Pode acessar a RPS</span>
+        </label>
+      </div>
+
+      <div class="admin-actions">
+        <button class="btn btn-primary" type="submit"><i class="ti ti-device-floppy"></i> Salvar acesso</button>
+      </div>
+      <div class="login-message" id="admin-message">Cadastre os emails que poderão fazer primeiro acesso.</div>
+    </form>
+
+    <div class="admin-list">
+      <div class="admin-list-title">Usuários autorizados</div>
+      <div id="admin-users-list"></div>
     </div>
   </div>
 </div>
