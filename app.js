@@ -64,6 +64,7 @@ let state = {
   indicadores: {},
   unidades:    {},
   dados:       {},
+  cellStyles:  {},
   dadosMes:    {},
   dadosMeta:   {},
   anexos:      {},
@@ -422,6 +423,7 @@ function resetStateData() {
   state.indicadores = {};
   state.unidades = {};
   state.dados = {};
+  state.cellStyles = {};
   state.dadosMes = {};
   state.dadosMeta = {};
   state.anexos = {};
@@ -441,11 +443,12 @@ function resetForSignedOut() {
 
 function buildSnapshotPayload() {
   return {
-    version: 1,
+    version: 2,
     areas: state.areas,
     indicadores: state.indicadores,
     unidades: state.unidades,
     dados: state.dados,
+    cellStyles: state.cellStyles,
     dadosMes: state.dadosMes,
     dadosMeta: state.dadosMeta,
     anexos: state.anexos,
@@ -464,6 +467,7 @@ function applySnapshotPayload(payload) {
   state.indicadores = payload.indicadores || {};
   state.unidades = payload.unidades || {};
   state.dados = payload.dados || {};
+  state.cellStyles = payload.cellStyles || {};
   state.dadosMes = payload.dadosMes || {};
   state.dadosMeta = payload.dadosMeta || {};
   state.anexos = payload.anexos || {};
@@ -1296,6 +1300,7 @@ function renderHeader() {
 
 function renderBody() {
   const tbody = document.getElementById('table-body');
+  captureRenderedCellStyles();
   tbody.innerHTML = '';
   const editable = canEditRps();
 
@@ -1338,9 +1343,10 @@ function renderBody() {
       row.appendChild(tdL);
 
       state.semanas.forEach((s, si) => {
+        const k = key(area.id, ind.id, s);
         const tdC = document.createElement('td');
         if (state.focusIdx === si) tdC.className = 'focused-col';
-        const k = key(area.id, ind.id, s);
+        tdC.dataset.key = k;
         const ak = anexoKey(area.id, ind.id, s);
         const countAtt = getAttachmentCount(ak);
         const hasAtt = countAtt > 0;
@@ -1404,6 +1410,7 @@ function renderBody() {
         wrap.appendChild(inp);
         wrap.appendChild(us);
         wrap.appendChild(cb);
+        applySavedCellStyle(k, tdC, wrap, inp);
         tdC.appendChild(wrap);
         row.appendChild(tdC);
       });
@@ -1529,6 +1536,62 @@ function renderBody() {
     addRow.appendChild(addTd);
     tbody.appendChild(addRow);
   });
+}
+
+function getCellStyleSnapshot(td, wrap, inp) {
+  return {
+    tdExtraClasses: getExtraClassNames(td, ['focused-col']),
+    tdStyle: td.getAttribute('style') || '',
+    wrapExtraClasses: getExtraClassNames(wrap, ['cell-wrap']),
+    wrapStyle: wrap.getAttribute('style') || '',
+    inputExtraClasses: getExtraClassNames(inp, ['cell-input']),
+    inputStyle: inp.getAttribute('style') || '',
+  };
+}
+
+function hasCellStyleSnapshot(snapshot) {
+  if (!snapshot) return false;
+  return !!(
+    snapshot.tdExtraClasses ||
+    snapshot.tdStyle ||
+    snapshot.wrapExtraClasses ||
+    snapshot.wrapStyle ||
+    snapshot.inputExtraClasses ||
+    snapshot.inputStyle
+  );
+}
+
+function getExtraClassNames(el, baseClasses) {
+  return [...el.classList].filter(cls => !baseClasses.includes(cls)).join(' ');
+}
+
+function captureRenderedCellStyles() {
+  const inputs = document.querySelectorAll('#table-body .cell-input[data-key]');
+  inputs.forEach(inp => {
+    const k = inp.dataset.key;
+    if (!k) return;
+    const wrap = inp.closest('.cell-wrap');
+    const td = inp.closest('td');
+    if (!wrap || !td) return;
+    const snapshot = getCellStyleSnapshot(td, wrap, inp);
+    if (hasCellStyleSnapshot(snapshot)) {
+      state.cellStyles[k] = snapshot;
+    } else {
+      delete state.cellStyles[k];
+    }
+  });
+}
+
+function applySavedCellStyle(k, td, wrap, inp) {
+  const snapshot = state.cellStyles[k];
+  if (!snapshot) return;
+  if (snapshot.tdExtraClasses) td.classList.add(...snapshot.tdExtraClasses.split(/\s+/).filter(Boolean));
+  if (snapshot.wrapExtraClasses) wrap.classList.add(...snapshot.wrapExtraClasses.split(/\s+/).filter(Boolean));
+  if (snapshot.inputExtraClasses) inp.classList.add(...snapshot.inputExtraClasses.split(/\s+/).filter(Boolean));
+
+  if (snapshot.tdStyle) td.setAttribute('style', snapshot.tdStyle);
+  if (snapshot.wrapStyle) wrap.setAttribute('style', snapshot.wrapStyle);
+  if (snapshot.inputStyle) inp.setAttribute('style', snapshot.inputStyle);
 }
 
 function toggleFocus(i) {
@@ -1725,8 +1788,10 @@ function renameIndicador(aId, idx, novo) {
 
 function removeIndicatorData(aId, indId) {
   state.semanas.forEach(col => {
-    delete state.dados[key(aId, indId, col)];
-    delete state.unidades[key(aId, indId, col)];
+    const cellKey = key(aId, indId, col);
+    delete state.dados[cellKey];
+    delete state.unidades[cellKey];
+    delete state.cellStyles[cellKey];
     delete state.anexos[anexoKey(aId, indId, col)];
   });
   delete state.modoMes[modoMesK(aId, indId)];
