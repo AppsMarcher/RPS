@@ -696,7 +696,6 @@ function getIndicatorPolicyLabel(ind) {
   if (fields.semanas && !fields.mes && !fields.meta) return 'Só semanas';
   return 'Personalizado';
 }
-}
 
 function setAdminMessage(message, type = '') {
   const el = document.getElementById('admin-message');
