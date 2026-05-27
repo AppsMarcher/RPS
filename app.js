@@ -742,8 +742,12 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;');
 }
 
+function getStoredPersonName(profile = state.auth.profile) {
+  return normalizePersonName(profile?.name || profile?.full_name || profile?.nome || '');
+}
+
 function getDisplayName(profile = state.auth.profile, fallbackEmail = state.auth.user?.email || '') {
-  const rawName = normalizePersonName(profile?.name || profile?.full_name || profile?.nome || '');
+  const rawName = getStoredPersonName(profile);
   if (rawName) return rawName;
   const email = normalizeEmail(fallbackEmail);
   return email ? email.split('@')[0] : '';
@@ -761,6 +765,53 @@ function getGreeting() {
   if (hour < 12) return 'Bom dia';
   if (hour < 18) return 'Boa tarde';
   return 'Boa noite';
+}
+
+function getAppUserNameFields() {
+  const candidates = ['name', 'full_name', 'nome'];
+  const sources = [state.auth.profile, ...state.auth.users].filter(Boolean);
+  const detected = candidates.find(field =>
+    sources.some(item => Object.prototype.hasOwnProperty.call(item, field))
+  );
+  return detected
+    ? [detected, ...candidates.filter(field => field !== detected)]
+    : candidates;
+}
+
+function withAppUserMatcher(query, match) {
+  if (match.id) return query.eq('id', match.id);
+  if (match.email) return query.eq('email', normalizeEmail(match.email));
+  return query;
+}
+
+async function persistAppUserName(match, rawName) {
+  const name = normalizePersonName(rawName);
+  let lastError = null;
+
+  for (const field of getAppUserNameFields()) {
+    const { error } = await withAppUserMatcher(
+      supabaseClient
+        .from(APP_USERS_TABLE)
+        .update({ [field]: name || null }),
+      match
+    );
+
+    if (!error) {
+      return { field, value: name || null, error: null };
+    }
+
+    lastError = error;
+    const message = String(error.message || '').toLowerCase();
+    if (
+      !message.includes('column') &&
+      !message.includes('schema') &&
+      !message.includes('does not exist')
+    ) {
+      break;
+    }
+  }
+
+  return { field: null, value: name || null, error: lastError };
 }
 
 function setLoginMessage(message, type = '') {
@@ -1355,7 +1406,7 @@ function renderAdminUsers() {
         <input
           class="admin-user-name-input"
           type="text"
-          value="${escapeHtml(getDisplayName(user, user.email))}"
+          value="${escapeHtml(getStoredPersonName(user))}"
           placeholder="Nome do usuário"
           onchange="updateAppUserName('${user.id}', this.value)">
       </div>
@@ -1388,17 +1439,15 @@ function renderAdminUsers() {
   `).join('');
 
   list.innerHTML = `
-    <div class="admin-users-scroll">
-      <div class="admin-user-row header">
-        <div>Nome</div>
-        <div>Email</div>
-        <div>Perfil</div>
-        <div>Ativo</div>
-        <div>Acesso</div>
-        <div>Ação</div>
-      </div>
-      ${rows}
+    <div class="admin-user-row header">
+      <div>Nome</div>
+      <div>Email</div>
+      <div>Perfil</div>
+      <div>Ativo</div>
+      <div>Acesso</div>
+      <div>Ação</div>
     </div>
+    ${rows}
   `;
 }
 
@@ -1677,7 +1726,6 @@ async function submitAdminUser(event) {
   const { error } = await supabaseClient
     .from(APP_USERS_TABLE)
     .upsert({
-      name: name || null,
       email,
       role,
       active,
@@ -1687,6 +1735,15 @@ async function submitAdminUser(event) {
   if (error) {
     setAdminMessage('Não foi possível salvar esse acesso.', 'error');
     return;
+  }
+
+  if (name) {
+    const nameResult = await persistAppUserName({ email }, name);
+    if (nameResult.error) {
+      setAdminMessage('O acesso foi salvo, mas não foi possível gravar o nome desse usuário.', 'error');
+      await loadAdminUsers();
+      return;
+    }
   }
 
   document.getElementById('admin-user-form')?.reset();
@@ -1717,23 +1774,19 @@ async function updateAppUserFlags(userId, field, value) {
 
 async function updateAppUserName(userId, rawName) {
   if (!supabaseClient || !isAdminUser()) return;
-  const name = normalizePersonName(rawName);
-  const { error } = await supabaseClient
-    .from(APP_USERS_TABLE)
-    .update({ name: name || null })
-    .eq('id', userId);
+  const result = await persistAppUserName({ id: userId }, rawName);
 
-  if (error) {
+  if (result.error) {
     setAdminMessage('Não foi possível atualizar o nome desse usuário.', 'error');
     await loadAdminUsers();
     return;
   }
 
   state.auth.users = state.auth.users.map(item => (
-    item.id === userId ? { ...item, name: name || null } : item
+    item.id === userId ? { ...item, [result.field]: result.value } : item
   ));
   if (state.auth.profile?.id === userId) {
-    state.auth.profile = { ...state.auth.profile, name: name || null };
+    state.auth.profile = { ...state.auth.profile, [result.field]: result.value };
     renderAuthHeader();
   }
   setAdminMessage('Nome atualizado com sucesso.', 'success');

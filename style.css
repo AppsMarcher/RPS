@@ -638,7 +638,7 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
 
 .admin-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.5fr) minmax(180px, 0.8fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.45fr) minmax(160px, 0.75fr);
   gap: 12px;
 }
 
@@ -666,12 +666,6 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
   margin-top: 18px;
 }
 
-.admin-users-scroll {
-  max-height: 46vh;
-  overflow-y: auto;
-  border-radius: 16px;
-}
-
 .admin-list-title {
   font-size: 13px;
   font-weight: 600;
@@ -681,8 +675,8 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
 
 .admin-user-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.1fr) minmax(220px, 1.6fr) 120px 120px 120px 72px;
-  gap: 10px;
+  grid-template-columns: minmax(120px, 0.85fr) minmax(180px, 1.45fr) 110px 92px 102px 54px;
+  gap: 8px;
   align-items: center;
   padding: 11px 12px;
   border-bottom: 0.5px solid rgba(0,0,0,0.08);
@@ -710,6 +704,7 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .admin-user-name-input {
