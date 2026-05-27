@@ -129,6 +129,7 @@
 
 <!-- Apresentacao -->
 <div class="present-overlay" id="present-overlay">
+  <div class="present-laser" id="present-laser"></div>
   <div class="app present-app">
     <div class="header">
       <div class="header-left">
@@ -251,7 +252,7 @@
     <div class="admin-head">
       <div>
         <div class="admin-title">Copiar configuração do mês</div>
-        <div class="admin-sub" id="copy-config-current-label">Escolha o mês e o ano de destino para receber a mesma máscara.</div>
+        <div class="admin-sub" id="copy-config-current-label">Escolha o mês e o ano de destino para receber a mesma configuração e fórmulas.</div>
       </div>
       <button class="btn" type="button" onclick="closeCopyConfigEditor()"><i class="ti ti-x"></i> Fechar</button>
     </div>
@@ -272,6 +273,30 @@
 
       <div class="admin-actions">
         <button class="btn btn-primary" type="button" onclick="confirmCopyMonthConfiguration()"><i class="ti ti-copy"></i> Copiar configuração</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="admin-overlay" id="cell-comment-overlay" onclick="closeCellCommentEditor()">
+  <div class="admin-modal policy-modal" onclick="event.stopPropagation()">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title">Comentário da célula</div>
+        <div class="admin-sub" id="cell-comment-label">Adicione uma observação para esta célula.</div>
+      </div>
+      <button class="btn" type="button" onclick="closeCellCommentEditor()"><i class="ti ti-x"></i> Fechar</button>
+    </div>
+
+    <div class="admin-form">
+      <div>
+        <label class="login-label" for="cell-comment-text">Comentário</label>
+        <textarea class="login-input comment-textarea" id="cell-comment-text" rows="5" placeholder="Digite um comentário para esta célula..."></textarea>
+      </div>
+
+      <div class="admin-actions comment-actions">
+        <button class="btn btn-primary" type="button" onclick="saveCellComment()"><i class="ti ti-device-floppy"></i> Salvar comentário</button>
+        <button class="btn" type="button" onclick="removeCellComment()"><i class="ti ti-trash"></i> Remover comentário</button>
       </div>
     </div>
   </div>

@@ -59,12 +59,14 @@ let state = {
     dirty: false,
     status: 'offline',
     message: 'Supabase não configurado',
+    lastSuccessAt: '',
   },
   areas:      JSON.parse(JSON.stringify(AREAS)),
   indicadores: {},
   unidades:    {},
   dados:       {},
   cellStyles:  {},
+  comentarios: {},
   dadosMes:    {},
   dadosMeta:   {},
   anexos:      {},
@@ -84,6 +86,8 @@ let authSubscription = null;
 let authPostLogoutMessage = '';
 let policyEditorState = null;
 let copyConfigState = null;
+let cellCommentEditorState = null;
+let presentLaserVisible = false;
 
 const COLUMN_WIDTH_DEFAULTS = {
   area: 620,
@@ -107,6 +111,7 @@ const modoMesK   = (a,i)    => `mes:${a}|${i}`;
 const modoMetaK  = (a,i)    => `meta:${a}|${i}`;
 const dadosMesK  = (a,i)    => `vmes:${a}|${i}`;
 const dadosMetaK = (a,i)    => `vmeta:${a}|${i}`;
+const comentarioK = (a,i,c) => `cmt:${a}|${i}|${c}`;
 const GRID_COLS  = ['S1', 'S2', 'S3', 'S4', 'S5', 'mes', 'meta'];
 
 function slugifyLabel(label) {
@@ -609,6 +614,34 @@ function handleGridInputFocus(event) {
   updateGridSelectionUI();
 }
 
+function findNextEditableInput(areaId, indId, col) {
+  const startRowIdx = getGridRowIndex(areaId, indId);
+  const colKey = normalizeGridCol(col);
+  if (startRowIdx < 0 || !colKey) return null;
+
+  const rows = getEditableGridRows();
+  for (let rowIdx = startRowIdx + 1; rowIdx < rows.length; rowIdx++) {
+    const row = rows[rowIdx];
+    const selector = `.cell-input[data-area-id="${row.areaId}"][data-ind-id="${row.indId}"][data-col="${colKey}"]`;
+    const input = document.querySelector(`#table-body ${selector}`);
+    if (input && !input.disabled) {
+      return input;
+    }
+  }
+  return null;
+}
+
+function handleGridEnterNavigation(event) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const current = event.currentTarget;
+  const nextInput = findNextEditableInput(current.dataset.areaId, current.dataset.indId, current.dataset.col);
+  current.blur();
+  if (nextInput) {
+    window.setTimeout(() => nextInput.focus(), 0);
+  }
+}
+
 function handleDocumentCopy(event) {
   const active = document.activeElement;
   const isGridInput = active?.classList?.contains('cell-input') && active?.dataset?.areaId;
@@ -625,6 +658,61 @@ function handleDocumentCopy(event) {
 
   event.preventDefault();
   event.clipboardData?.setData('text/plain', text);
+}
+
+function getCellComment(commentKey) {
+  return String(state.comentarios[commentKey] || '');
+}
+
+function applyCellCommentState(td, commentKey) {
+  if (!td || !commentKey) return;
+  const comment = getCellComment(commentKey).trim();
+  td.classList.toggle('has-comment', !!comment);
+  td.title = comment || '';
+}
+
+function openCellCommentEditor(areaId, indId, col, label) {
+  const commentKey = comentarioK(areaId, indId, col);
+  cellCommentEditorState = { areaId, indId, col, commentKey };
+  const textarea = document.getElementById('cell-comment-text');
+  const labelEl = document.getElementById('cell-comment-label');
+  if (textarea) textarea.value = getCellComment(commentKey);
+  if (labelEl) labelEl.textContent = label || 'Adicione uma observação para esta célula.';
+  document.getElementById('cell-comment-overlay')?.classList.add('open');
+  window.setTimeout(() => textarea?.focus(), 0);
+}
+
+function closeCellCommentEditor() {
+  cellCommentEditorState = null;
+  document.getElementById('cell-comment-overlay')?.classList.remove('open');
+}
+
+function saveCellComment() {
+  if (!cellCommentEditorState || !canEditData()) return;
+  const textarea = document.getElementById('cell-comment-text');
+  const value = String(textarea?.value || '').trim();
+  applyGridChange(() => {
+    if (value) {
+      state.comentarios[cellCommentEditorState.commentKey] = value;
+    } else {
+      delete state.comentarios[cellCommentEditorState.commentKey];
+    }
+  });
+  closeCellCommentEditor();
+}
+
+function removeCellComment() {
+  if (!cellCommentEditorState || !canEditData()) return;
+  applyGridChange(() => {
+    delete state.comentarios[cellCommentEditorState.commentKey];
+  });
+  closeCellCommentEditor();
+}
+
+function handleCellCommentContextMenu(event, areaId, indId, col, label) {
+  event.preventDefault();
+  if (!canEditData()) return;
+  openCellCommentEditor(areaId, indId, col, label);
 }
 
 function normalizeEmail(email) {
@@ -872,9 +960,21 @@ function renderSyncStatus() {
   if (reloadBtn) reloadBtn.disabled = disabled;
 }
 
+function formatSyncTimestamp(date = new Date()) {
+  const pad = n => String(n).padStart(2, '0');
+  const yy = String(date.getFullYear()).slice(-2);
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${yy} - ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function setSyncStatus(status, message, dirty = state.sync.dirty) {
   state.sync.status = status;
-  state.sync.message = message;
+  if (status === 'ready' && /Sincronizado com /.test(message)) {
+    state.sync.lastSuccessAt = state.sync.lastSuccessAt || formatSyncTimestamp();
+  }
+  const suffix = status === 'ready' && /Sincronizado com /.test(message) && state.sync.lastSuccessAt
+    ? ` | ${state.sync.lastSuccessAt}`
+    : '';
+  state.sync.message = `${message}${suffix}`;
   state.sync.dirty = dirty;
   renderSyncStatus();
 }
@@ -959,6 +1059,7 @@ function resetStateData() {
   state.unidades = {};
   state.dados = {};
   state.cellStyles = {};
+  state.comentarios = {};
   state.dadosMes = {};
   state.dadosMeta = {};
   state.anexos = {};
@@ -985,6 +1086,7 @@ function buildSnapshotPayload() {
     unidades: state.unidades,
     dados: state.dados,
     cellStyles: state.cellStyles,
+    comentarios: state.comentarios,
     dadosMes: state.dadosMes,
     dadosMeta: state.dadosMeta,
     anexos: state.anexos,
@@ -993,14 +1095,23 @@ function buildSnapshotPayload() {
   };
 }
 
+function extractFormulaEntries() {
+  return Object.fromEntries(
+    Object.entries(state.dados).filter(([, raw]) =>
+      typeof raw === 'string' && raw.trim().startsWith('=')
+    )
+  );
+}
+
 function buildStructureOnlyPayload() {
   return {
     version: 2,
     areas: JSON.parse(JSON.stringify(state.areas)),
     indicadores: JSON.parse(JSON.stringify(state.indicadores)),
     unidades: JSON.parse(JSON.stringify(state.unidades)),
-    dados: {},
+    dados: extractFormulaEntries(),
     cellStyles: {},
+    comentarios: {},
     dadosMes: {},
     dadosMeta: {},
     anexos: {},
@@ -1017,7 +1128,7 @@ function previewCopyConfigSelection() {
   const month = Number(monthSelect.value);
   const year = Number(yearSelect.value);
   if (!month || !year) return;
-  preview.innerHTML = `<strong>Destino</strong>${MESES[month - 1]} ${year}. Apenas a máscara será copiada; os dados do mês destino continuarão zerados.`;
+  preview.innerHTML = `<strong>Destino</strong>${MESES[month - 1]} ${year}. A estrutura e as fórmulas serão copiadas; os campos digitados, anexos e valores manuais do mês destino continuarão zerados.`;
 }
 
 function closeCopyConfigEditor() {
@@ -1052,7 +1163,7 @@ function openCopyConfigEditor() {
   monthSelect.onchange = previewCopyConfigSelection;
   yearSelect.onchange = previewCopyConfigSelection;
   if (label) {
-    label.textContent = `Origem: ${getPeriodoLabel()}. Escolha o mês e o ano que receberão a mesma configuração estrutural.`;
+    label.textContent = `Origem: ${getPeriodoLabel()}. Escolha o mês e o ano que receberão a mesma configuração e fórmulas.`;
   }
   previewCopyConfigSelection();
   document.getElementById('copy-config-overlay')?.classList.add('open');
@@ -1092,7 +1203,7 @@ async function confirmCopyMonthConfiguration() {
   }
 
   const targetLabel = `${MESES[month - 1]} ${year}`;
-  if (!confirm(`Copiar apenas a configuração estrutural de ${getPeriodoLabel()} para ${targetLabel}?\n\nIsso substitui a máscara do mês destino, mas não leva os dados preenchidos.`)) {
+  if (!confirm(`Copiar a configuração estrutural e as fórmulas de ${getPeriodoLabel()} para ${targetLabel}?\n\nIsso substitui a máscara do mês destino, mas não leva os dados preenchidos.`)) {
     return;
   }
 
@@ -1126,6 +1237,7 @@ function applySnapshotPayload(payload) {
   state.unidades = payload.unidades || {};
   state.dados = payload.dados || {};
   state.cellStyles = payload.cellStyles || {};
+  state.comentarios = payload.comentarios || {};
   state.dadosMes = payload.dadosMes || {};
   state.dadosMeta = payload.dadosMeta || {};
   state.anexos = payload.anexos || {};
@@ -1241,6 +1353,7 @@ async function saveToCloud(silent = false) {
     return false;
   }
 
+  state.sync.lastSuccessAt = formatSyncTimestamp();
   setSyncStatus('ready', `Salvo em nuvem: ${getPeriodoLabel()}`, false);
   if (!silent) scheduleSyncMessageReset();
   else scheduleSyncMessageReset();
@@ -1269,6 +1382,7 @@ async function reloadFromCloud(silent = false) {
     resetStateData();
     initData();
     renderAll();
+    state.sync.lastSuccessAt = formatSyncTimestamp();
     setSyncStatus('ready', `Sem dados salvos para ${getPeriodoLabel()}`, false);
     if (!silent) scheduleSyncMessageReset();
     return true;
@@ -1276,6 +1390,7 @@ async function reloadFromCloud(silent = false) {
 
   applySnapshotPayload(data.payload);
   renderAll();
+  state.sync.lastSuccessAt = formatSyncTimestamp();
   setSyncStatus('ready', `Dados carregados: ${getPeriodoLabel()}`, false);
   if (!silent) scheduleSyncMessageReset();
   return true;
@@ -2109,6 +2224,7 @@ function renderBody() {
 
       state.semanas.forEach((s, si) => {
         const k = key(area.id, ind.id, s);
+        const commentKey = comentarioK(area.id, ind.id, s);
         const tdC = document.createElement('td');
         if (state.focusIdx === si) tdC.className = 'focused-col';
         tdC.dataset.key = k;
@@ -2118,6 +2234,7 @@ function renderBody() {
         const previewAtt = getFirstImageAttachment(ak);
         const lbl = `${ind.label} - ${s}`;
         const unitCell = state.unidades[k] || 'R$';
+        tdC.oncontextmenu = e => handleCellCommentContextMenu(e, area.id, ind.id, s, `Comentário: ${ind.label} / ${s}`);
 
         const wrap = document.createElement('div');
         wrap.className = 'cell-wrap';
@@ -2145,7 +2262,7 @@ function renderBody() {
           e.target.value = rv ? formatVal(rv, unitCell) : '';
         };
         inp.onkeydown = e => {
-          if (e.key === 'Enter') inp.blur();
+          handleGridEnterNavigation(e);
         };
         inp.onpaste = handleGridPaste;
         inp.onpointerdown = handleGridInputPointerDown;
@@ -2183,12 +2300,15 @@ function renderBody() {
         wrap.appendChild(us);
         wrap.appendChild(cb);
         applySavedCellStyle(k, tdC, wrap, inp);
+        applyCellCommentState(tdC, commentKey);
         tdC.appendChild(wrap);
         row.appendChild(tdC);
       });
 
       const tdMes = document.createElement('td');
       tdMes.className = 'mes-cell';
+      applyCellCommentState(tdMes, comentarioK(area.id, ind.id, 'mes'));
+      tdMes.oncontextmenu = e => handleCellCommentContextMenu(e, area.id, ind.id, 'mes', `Comentário: ${ind.label} / Mês`);
       const modoMesObj = getModoMesObj(area.id, ind);
       const valMes = calcMes(area.id, ind);
       const mWrap = document.createElement('div');
@@ -2218,7 +2338,7 @@ function renderBody() {
           e.target.value = rv ? formatVal(rv, unit) : '';
         };
         inp2.onkeydown = e => {
-          if (e.key === 'Enter') inp2.blur();
+          handleGridEnterNavigation(e);
         };
         inp2.onpaste = handleGridPaste;
         inp2.onpointerdown = handleGridInputPointerDown;
@@ -2242,6 +2362,8 @@ function renderBody() {
 
       const tdMeta = document.createElement('td');
       tdMeta.className = 'meta-cell';
+      applyCellCommentState(tdMeta, comentarioK(area.id, ind.id, 'meta'));
+      tdMeta.oncontextmenu = e => handleCellCommentContextMenu(e, area.id, ind.id, 'meta', `Comentário: ${ind.label} / Meta`);
       const modoMetaObj = getModoMetaObj(area.id, ind);
       const valMeta = calcMeta(area.id, ind);
       const mtWrap = document.createElement('div');
@@ -2271,7 +2393,7 @@ function renderBody() {
           e.target.value = rv ? formatVal(rv, unit) : '';
         };
         inp3.onkeydown = e => {
-          if (e.key === 'Enter') inp3.blur();
+          handleGridEnterNavigation(e);
         };
         inp3.onpaste = handleGridPaste;
         inp3.onpointerdown = handleGridInputPointerDown;
@@ -2432,6 +2554,9 @@ function openPresent() {
 
 function closePresent() {
   document.getElementById('present-overlay').classList.remove('open');
+  const laser = document.getElementById('present-laser');
+  if (laser) laser.style.opacity = '0';
+  presentLaserVisible = false;
   exitFullscreen();
 }
 
@@ -2564,6 +2689,25 @@ function renderPresentBody() {
   updatePresentNav();
 }
 
+function updatePresentLaserPosition(event) {
+  const overlay = document.getElementById('present-overlay');
+  const laser = document.getElementById('present-laser');
+  if (!overlay || !laser || !overlay.classList.contains('open')) return;
+  laser.style.left = `${event.clientX}px`;
+  laser.style.top = `${event.clientY}px`;
+  if (!presentLaserVisible) {
+    laser.style.opacity = '1';
+    presentLaserVisible = true;
+  }
+}
+
+function hidePresentLaser() {
+  const laser = document.getElementById('present-laser');
+  if (!laser) return;
+  laser.style.opacity = '0';
+  presentLaserVisible = false;
+}
+
 function renameIndicador(aId, idx, novo) {
   if (!canEditStructure()) return;
   if (!String(novo || '').trim()) return;
@@ -2578,8 +2722,11 @@ function removeIndicatorData(aId, indId) {
     delete state.dados[cellKey];
     delete state.unidades[cellKey];
     delete state.cellStyles[cellKey];
+    delete state.comentarios[comentarioK(aId, indId, col)];
     delete state.anexos[anexoKey(aId, indId, col)];
   });
+  delete state.comentarios[comentarioK(aId, indId, 'mes')];
+  delete state.comentarios[comentarioK(aId, indId, 'meta')];
   delete state.modoMes[modoMesK(aId, indId)];
   delete state.modoMeta[modoMetaK(aId, indId)];
   delete state.dadosMes[dadosMesK(aId, indId)];
@@ -2710,6 +2857,11 @@ function exportData() {
 
 async function bootstrap() {
   document.addEventListener('copy', handleDocumentCopy);
+  const presentOverlay = document.getElementById('present-overlay');
+  if (presentOverlay) {
+    presentOverlay.addEventListener('mousemove', updatePresentLaserPosition);
+    presentOverlay.addEventListener('mouseleave', hidePresentLaser);
+  }
   const loginForm = document.getElementById('login-form');
   if (loginForm) {
     loginForm.addEventListener('submit', submitLogin);

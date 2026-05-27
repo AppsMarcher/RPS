@@ -314,16 +314,27 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
   background: rgba(163,45,45,0.08);
 }
 .spacer-row td {
-  height: 20px;
+  height: 12px;
+  min-height: 12px;
   padding: 0 10px;
   background: #fff;
 }
 .spacer-row-actions {
-  min-height: 20px;
+  min-height: 12px;
 }
 
 /* CELL */
 .cell-wrap { display: flex; align-items: center; gap: 2px; padding: 3px 5px; }
+.comment-textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+.comment-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .cell-input {
   flex: 1; font-size: 12px; border: 0.5px solid transparent;
   border-radius: 4px; padding: 4px; background: transparent;
@@ -375,6 +386,19 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
 /* CELL VARIANTS */
 td.focused-col { background: rgba(24,95,165,0.07); }
 td.focused-col .cell-input { font-weight: 500; }
+td.has-comment {
+  position: relative;
+}
+td.has-comment::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-top: 11px solid #EF9F27;
+  border-left: 11px solid transparent;
+}
 td.grid-selected { background: rgba(24,95,165,0.16); }
 td.grid-selected .cell-input { background: rgba(255,255,255,0.88); border-color: rgba(24,95,165,0.28); }
 td.grid-selected.focused-col { background: rgba(24,95,165,0.22); }
@@ -692,8 +716,29 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
   inset: 0;
   z-index: 9999;
   background: var(--color-bg-tertiary);
+  cursor: none;
 }
 .present-overlay.open { display: flex; }
+.present-laser {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  background:
+    radial-gradient(circle, rgba(255,255,255,0.95) 0 10%, rgba(255,96,96,0.98) 11% 32%, rgba(222,24,24,0.9) 33% 52%, rgba(222,24,24,0.18) 53% 100%);
+  box-shadow:
+    0 0 12px rgba(255,48,48,0.65),
+    0 0 22px rgba(255,48,48,0.35);
+  transition: opacity 0.12s ease;
+}
+.present-overlay.open .present-laser {
+  opacity: 1;
+}
 .present-app {
   display: flex;
   flex-direction: column;
