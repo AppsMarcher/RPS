@@ -1278,12 +1278,16 @@ function renderAdminUsers() {
   const list = document.getElementById('admin-users-list');
   if (!list) return;
 
-  if (!state.auth.users.length) {
+  const visibleUsers = state.auth.users.filter(user =>
+    user.email === ADMIN_EMAIL || (user.active && user.can_access)
+  );
+
+  if (!visibleUsers.length) {
     list.innerHTML = '<div class="admin-empty">Nenhum usuário autorizado ainda.</div>';
     return;
   }
 
-  const rows = state.auth.users.map(user => `
+  const rows = visibleUsers.map(user => `
     <div class="admin-user-row">
       <div class="admin-user-email">${user.email}</div>
       <div>
@@ -1675,6 +1679,12 @@ async function revokeAppUserAccess(userId) {
     return;
   }
 
+  state.auth.users = state.auth.users.map(item => (
+    item.id === userId
+      ? { ...item, active: false, can_access: false }
+      : item
+  ));
+  renderAdminUsers();
   setAdminMessage('Acesso revogado com sucesso. O histórico do usuário foi preservado.', 'success');
   await loadAdminUsers();
 }
