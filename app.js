@@ -768,8 +768,19 @@ function getGreeting() {
 }
 
 function getAppUserNameFields() {
-  const candidates = ['name', 'full_name', 'nome'];
+  const baseCandidates = ['name', 'full_name', 'nome', 'display_name', 'user_name', 'username', 'nome_usuario', 'nome_completo'];
   const sources = [state.auth.profile, ...state.auth.users].filter(Boolean);
+  const discovered = new Set();
+
+  sources.forEach(item => {
+    Object.keys(item).forEach(field => {
+      if (/(^|_)(name|nome)(_|$)/i.test(field)) {
+        discovered.add(field);
+      }
+    });
+  });
+
+  const candidates = [...discovered, ...baseCandidates].filter((field, index, arr) => arr.indexOf(field) === index);
   const detected = candidates.find(field =>
     sources.some(item => Object.prototype.hasOwnProperty.call(item, field))
   );
@@ -778,10 +789,26 @@ function getAppUserNameFields() {
     : candidates;
 }
 
-function withAppUserMatcher(query, match) {
+function withAppUserMatcher(query, match, prefer = 'id') {
+  const normalizedEmail = normalizeEmail(match?.email || '');
+  if (prefer === 'email' && normalizedEmail) return query.eq('email', normalizedEmail);
   if (match.id) return query.eq('id', match.id);
-  if (match.email) return query.eq('email', normalizeEmail(match.email));
+  if (normalizedEmail) return query.eq('email', normalizedEmail);
   return query;
+}
+
+function shouldTryNextNameField(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+  return (
+    code === 'PGRST204' ||
+    code === '42703' ||
+    message.includes('column') ||
+    message.includes('schema') ||
+    message.includes('does not exist') ||
+    message.includes('could not find') ||
+    message.includes('unknown column')
+  );
 }
 
 async function persistAppUserName(match, rawName) {
@@ -789,25 +816,23 @@ async function persistAppUserName(match, rawName) {
   let lastError = null;
 
   for (const field of getAppUserNameFields()) {
-    const { error } = await withAppUserMatcher(
-      supabaseClient
-        .from(APP_USERS_TABLE)
-        .update({ [field]: name || null }),
-      match
-    );
+    for (const prefer of ['id', 'email']) {
+      const { error } = await withAppUserMatcher(
+        supabaseClient
+          .from(APP_USERS_TABLE)
+          .update({ [field]: name || null }),
+        match,
+        prefer
+      );
 
-    if (!error) {
-      return { field, value: name || null, error: null };
-    }
+      if (!error) {
+        return { field, value: name || null, error: null };
+      }
 
-    lastError = error;
-    const message = String(error.message || '').toLowerCase();
-    if (
-      !message.includes('column') &&
-      !message.includes('schema') &&
-      !message.includes('does not exist')
-    ) {
-      break;
+      lastError = error;
+      if (!shouldTryNextNameField(error)) {
+        return { field: null, value: name || null, error };
+      }
     }
   }
 
@@ -1740,7 +1765,8 @@ async function submitAdminUser(event) {
   if (name) {
     const nameResult = await persistAppUserName({ email }, name);
     if (nameResult.error) {
-      setAdminMessage('O acesso foi salvo, mas não foi possível gravar o nome desse usuário.', 'error');
+      const detail = nameResult.error?.message ? ` Detalhe: ${nameResult.error.message}` : '';
+      setAdminMessage(`O acesso foi salvo, mas não foi possível gravar o nome desse usuário.${detail}`, 'error');
       await loadAdminUsers();
       return;
     }
@@ -1777,7 +1803,8 @@ async function updateAppUserName(userId, rawName) {
   const result = await persistAppUserName({ id: userId }, rawName);
 
   if (result.error) {
-    setAdminMessage('Não foi possível atualizar o nome desse usuário.', 'error');
+    const detail = result.error?.message ? ` Detalhe: ${result.error.message}` : '';
+    setAdminMessage(`Não foi possível atualizar o nome desse usuário.${detail}`, 'error');
     await loadAdminUsers();
     return;
   }
