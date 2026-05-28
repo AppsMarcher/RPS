@@ -671,6 +671,10 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
   margin-top: 18px;
 }
 
+.reminder-block {
+  margin-top: 22px;
+}
+
 .admin-list-title {
   font-size: 13px;
   font-weight: 600;
@@ -776,6 +780,38 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
 .policy-preview strong {
   display: block;
   margin-bottom: 4px;
+}
+
+.reminder-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.reminder-grid-full {
+  grid-column: 1 / -1;
+}
+
+.reminder-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+}
+
+.reminder-preview strong {
+  margin-bottom: 0;
+}
+
+.reminder-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.reminder-static-info {
+  color: var(--color-text-secondary);
 }
 
 /* APRESENTAÇÃO */
@@ -962,7 +998,12 @@ td.meta-cell .mode-icon-btn:hover { color: #633806; background: rgba(186,117,23,
   }
 
   .admin-grid,
-  .admin-user-row {
+  .admin-user-row,
+  .reminder-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reminder-preview {
     grid-template-columns: 1fr;
   }
 }

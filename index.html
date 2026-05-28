@@ -216,6 +216,68 @@
       <div class="admin-list-title">Usuários autorizados</div>
       <div id="admin-users-list"></div>
     </div>
+
+    <div class="admin-list reminder-block">
+      <div class="admin-list-title">Lembrete automático de preenchimento</div>
+      <div class="admin-form" id="reminder-form">
+        <div class="admin-checks">
+          <label class="admin-check">
+            <input type="checkbox" id="reminder-enabled">
+            <span>Ativo</span>
+          </label>
+          <label class="admin-check reminder-static-info">
+            <span>Destinatários: Admins e Editores com acesso ativo</span>
+          </label>
+        </div>
+
+        <div class="reminder-grid">
+          <div class="reminder-grid-full">
+            <label class="login-label" for="reminder-subject">Assunto do e-mail</label>
+            <input class="login-input" id="reminder-subject" type="text" placeholder="Lembrete RPS | {{mes}} {{ano}}">
+          </div>
+          <div class="reminder-grid-full">
+            <label class="login-label" for="reminder-body">Mensagem do e-mail</label>
+            <textarea class="login-input comment-textarea" id="reminder-body" placeholder="Olá, {{nome}}.&#10;&#10;Lembramos do preenchimento dos indicadores da RPS.&#10;&#10;Acesse: {{link_app}}"></textarea>
+          </div>
+          <div>
+            <label class="login-label" for="reminder-recurrence">Recorrência</label>
+            <select class="login-input" id="reminder-recurrence">
+              <option value="weekly">Semanal</option>
+              <option value="daily">Diária</option>
+              <option value="monthly">Mensal</option>
+            </select>
+          </div>
+          <div>
+            <label class="login-label" for="reminder-weekday">Dia</label>
+            <select class="login-input" id="reminder-weekday"></select>
+          </div>
+          <div>
+            <label class="login-label" for="reminder-time">Hora</label>
+            <input class="login-input" id="reminder-time" type="time">
+          </div>
+          <div>
+            <label class="login-label" for="reminder-timezone">Fuso horário</label>
+            <input class="login-input" id="reminder-timezone" type="text" value="America/Sao_Paulo" readonly>
+          </div>
+          <div class="reminder-grid-full">
+            <div class="policy-preview reminder-preview" id="reminder-meta">
+              <strong>Último disparo</strong>
+              <span id="reminder-last-sent">Nunca enviado</span>
+              <strong>Último disparado por</strong>
+              <span id="reminder-last-sent-by">-</span>
+              <strong>Variáveis disponíveis</strong>
+              <span>{{nome}}, {{email}}, {{mes}}, {{ano}}, {{semana}}, {{link_app}}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-actions reminder-actions">
+          <button class="btn btn-primary" type="button" onclick="saveReminderSettings()"><i class="ti ti-device-floppy"></i> Salvar configuração</button>
+          <button class="btn" type="button" onclick="triggerReminderNow()"><i class="ti ti-send"></i> Disparar agora</button>
+        </div>
+        <div class="login-message" id="reminder-message">Configure o envio automático e manual dos lembretes por e-mail.</div>
+      </div>
+    </div>
   </div>
 </div>
 

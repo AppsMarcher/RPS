@@ -39,6 +39,16 @@ const MES_MODOS = [
   { id:'manual', icon:'ti-pencil',             label:'Valor digitado manualmente'  },
 ];
 
+const REMINDER_WEEKDAYS = [
+  { value: 0, label: 'Domingo' },
+  { value: 1, label: 'Segunda-feira' },
+  { value: 2, label: 'Terça-feira' },
+  { value: 3, label: 'Quarta-feira' },
+  { value: 4, label: 'Quinta-feira' },
+  { value: 5, label: 'Sexta-feira' },
+  { value: 6, label: 'Sábado' },
+];
+
 let state = {
   mesIdx:     new Date().getMonth(),
   ano:        new Date().getFullYear(),
@@ -73,6 +83,7 @@ let state = {
   modoMes:     {},
   modoMeta:    {},
   gridSelection: null,
+  reminder: null,
 };
 
 let lbKey = null;
@@ -104,6 +115,8 @@ const COLUMN_WIDTH_DEFAULTS = {
 
 const SUPABASE_TABLE = 'rps_snapshots';
 const APP_USERS_TABLE = 'app_users';
+const APP_REMINDER_TABLE = 'app_reminder_settings';
+const REMINDER_FUNCTION_NAME = 'send-rps-reminder';
 const ADMIN_EMAIL = 'ricardo@marcher.com.br';
 
 const key        = (a,i,c)  => `${a}|${i}|${c}`;
@@ -742,6 +755,73 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;');
 }
 
+function getDefaultReminderSettings() {
+  return {
+    id: null,
+    enabled: false,
+    subject_template: 'Lembrete RPS | {{mes}} {{ano}}',
+    body_template: 'Olá, {{nome}}.\n\nLembramos do preenchimento dos indicadores da RPS.\n\nAcesse: {{link_app}}',
+    recurrence: 'weekly',
+    weekday: 1,
+    time_hhmm: '11:00',
+    timezone: 'America/Sao_Paulo',
+    last_sent_at: null,
+    last_sent_by: '',
+    updated_at: null,
+    updated_by: '',
+  };
+}
+
+function normalizeReminderSettings(settings = {}) {
+  const defaults = getDefaultReminderSettings();
+  return {
+    ...defaults,
+    ...settings,
+    weekday: Number(settings.weekday ?? defaults.weekday),
+    enabled: !!settings.enabled,
+    recurrence: settings.recurrence || defaults.recurrence,
+    time_hhmm: settings.time_hhmm || defaults.time_hhmm,
+    timezone: settings.timezone || defaults.timezone,
+  };
+}
+
+function ensureReminderState() {
+  state.reminder = normalizeReminderSettings(state.reminder || {});
+  return state.reminder;
+}
+
+function getReminderAppUrl() {
+  try {
+    const href = window.location?.href || '';
+    if (!href) return '';
+    const url = new URL(href);
+    url.hash = '';
+    return url.toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+function getFunctionInvokeUrl(functionName) {
+  const cfg = window.SUPABASE_CONFIG || {};
+  const baseUrl = String(cfg.url || '').replace(/\/+$/, '');
+  return baseUrl ? `${baseUrl}/functions/v1/${functionName}` : '';
+}
+
+function formatDateTimeLabel(value) {
+  if (!value) return 'Nunca enviado';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function getStoredPersonName(profile = state.auth.profile) {
   return normalizePersonName(profile?.name || profile?.full_name || profile?.nome || '');
 }
@@ -940,6 +1020,78 @@ function setAdminMessage(message, type = '') {
   if (!el) return;
   el.textContent = message;
   el.className = `login-message${type ? ` is-${type}` : ''}`;
+}
+
+function setReminderMessage(message, type = '') {
+  const el = document.getElementById('reminder-message');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `login-message${type ? ` is-${type}` : ''}`;
+}
+
+function renderReminderScheduleOptions(recurrence = 'weekly', selectedValue = 1) {
+  const select = document.getElementById('reminder-weekday');
+  if (!select) return;
+  if (recurrence === 'daily') {
+    select.innerHTML = '<option value="0">Todos os dias</option>';
+    select.value = '0';
+    select.disabled = true;
+    return;
+  }
+
+  select.disabled = false;
+
+  if (recurrence === 'monthly') {
+    select.innerHTML = Array.from({ length: 31 }, (_, index) => {
+      const day = index + 1;
+      return `<option value="${day}">Dia ${day}</option>`;
+    }).join('');
+    select.value = String(selectedValue || 1);
+    return;
+  }
+
+  select.innerHTML = REMINDER_WEEKDAYS
+    .map(option => `<option value="${option.value}">${option.label}</option>`)
+    .join('');
+  select.value = String(selectedValue ?? 1);
+}
+
+function renderReminderSettings() {
+  const settings = ensureReminderState();
+  const enabled = document.getElementById('reminder-enabled');
+  const subject = document.getElementById('reminder-subject');
+  const body = document.getElementById('reminder-body');
+  const recurrence = document.getElementById('reminder-recurrence');
+  const weekday = document.getElementById('reminder-weekday');
+  const time = document.getElementById('reminder-time');
+  const timezone = document.getElementById('reminder-timezone');
+  const lastSent = document.getElementById('reminder-last-sent');
+  const lastSentBy = document.getElementById('reminder-last-sent-by');
+
+  if (enabled) enabled.checked = !!settings.enabled;
+  if (subject) subject.value = settings.subject_template || '';
+  if (body) body.value = settings.body_template || '';
+  if (recurrence) recurrence.value = settings.recurrence || 'weekly';
+  renderReminderScheduleOptions(settings.recurrence || 'weekly', settings.weekday ?? 1);
+  if (weekday && !weekday.disabled) weekday.value = String(settings.weekday ?? 1);
+  if (time) time.value = settings.time_hhmm || '11:00';
+  if (timezone) timezone.value = settings.timezone || 'America/Sao_Paulo';
+  if (lastSent) lastSent.textContent = formatDateTimeLabel(settings.last_sent_at);
+  if (lastSentBy) lastSentBy.textContent = settings.last_sent_by || '-';
+}
+
+function collectReminderSettingsFromForm() {
+  const current = ensureReminderState();
+  return normalizeReminderSettings({
+    ...current,
+    enabled: !!document.getElementById('reminder-enabled')?.checked,
+    subject_template: document.getElementById('reminder-subject')?.value?.trim() || '',
+    body_template: document.getElementById('reminder-body')?.value || '',
+    recurrence: document.getElementById('reminder-recurrence')?.value || 'weekly',
+    weekday: Number(document.getElementById('reminder-weekday')?.value || 1),
+    time_hhmm: document.getElementById('reminder-time')?.value || '11:00',
+    timezone: document.getElementById('reminder-timezone')?.value || 'America/Sao_Paulo',
+  });
 }
 
 function renderAuthMode() {
@@ -1153,6 +1305,25 @@ async function loadAdminUsers() {
   renderAdminUsers();
 }
 
+async function loadReminderSettings() {
+  if (!supabaseClient || !isAdminUser()) return;
+  const { data, error } = await supabaseClient
+    .from(APP_REMINDER_TABLE)
+    .select('*')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    state.reminder = getDefaultReminderSettings();
+    renderReminderSettings();
+    setReminderMessage('Não foi possível carregar a configuração de lembretes.', 'error');
+    return;
+  }
+
+  state.reminder = normalizeReminderSettings(data || {});
+  renderReminderSettings();
+}
+
 function resetStateData() {
   state.areas = JSON.parse(JSON.stringify(AREAS));
   state.indicadores = {};
@@ -1364,7 +1535,10 @@ function openAdminPanel() {
   if (!isAdminUser()) return;
   document.getElementById('admin-overlay')?.classList.add('open');
   setAdminMessage('Cadastre os emails que poderão fazer primeiro acesso.');
+  setReminderMessage('Configure o envio automático e manual dos lembretes por e-mail.');
+  renderReminderSettings();
   loadAdminUsers();
+  loadReminderSettings();
 }
 
 function closeAdminPanel() {
@@ -1728,6 +1902,117 @@ async function submitAdminUser(event) {
   document.getElementById('admin-can-access').checked = true;
   setAdminMessage('Acesso salvo. O usuário já pode usar “Primeiro acesso”.', 'success');
   await loadAdminUsers();
+}
+
+async function saveReminderSettings() {
+  if (!supabaseClient || !isAdminUser()) return;
+  const payload = collectReminderSettingsFromForm();
+
+  if (!payload.subject_template) {
+    setReminderMessage('Informe um assunto para o e-mail de lembrete.', 'error');
+    return;
+  }
+
+  if (!payload.body_template.trim()) {
+    setReminderMessage('Informe o texto padrão do e-mail de lembrete.', 'error');
+    return;
+  }
+
+  const savePayload = {
+    enabled: payload.enabled,
+    subject_template: payload.subject_template,
+    body_template: payload.body_template,
+    recurrence: payload.recurrence,
+    weekday: payload.weekday,
+    time_hhmm: payload.time_hhmm,
+    timezone: payload.timezone || 'America/Sao_Paulo',
+    updated_by: state.auth.user?.email || null,
+  };
+
+  let response;
+  if (payload.id) {
+    response = await supabaseClient
+      .from(APP_REMINDER_TABLE)
+      .update(savePayload)
+      .eq('id', payload.id)
+      .select('*')
+      .single();
+  } else {
+    response = await supabaseClient
+      .from(APP_REMINDER_TABLE)
+      .insert(savePayload)
+      .select('*')
+      .single();
+  }
+
+  if (response.error) {
+    setReminderMessage(`Não foi possível salvar a configuração de lembretes. Detalhe: ${response.error.message || 'erro desconhecido'}`, 'error');
+    return;
+  }
+
+  state.reminder = normalizeReminderSettings(response.data || savePayload);
+  renderReminderSettings();
+  setReminderMessage('Configuração de lembretes salva com sucesso.', 'success');
+}
+
+async function triggerReminderNow() {
+  if (!supabaseClient || !isAdminUser()) return;
+  if (!ensureReminderState().id) {
+    await saveReminderSettings();
+    if (!ensureReminderState().id) return;
+  }
+
+  setReminderMessage('Disparando lembrete manual...', '');
+  const payload = {
+    trigger: 'manual',
+    reminderId: state.reminder.id,
+    periodLabel: getPeriodoLabel(),
+    focusedSemana: getFocusedSemana(),
+    appUrl: getReminderAppUrl(),
+    triggeredBy: state.auth.user?.email || '',
+  };
+
+  const { data: sessionData } = await supabaseClient.auth.getSession();
+  const accessToken = sessionData?.session?.access_token || '';
+  const anonKey = window.SUPABASE_CONFIG?.anonKey || '';
+  const functionUrl = getFunctionInvokeUrl(REMINDER_FUNCTION_NAME);
+
+  if (!functionUrl || !accessToken || !anonKey) {
+    setReminderMessage('Não foi possível preparar a autenticação do disparo manual.', 'error');
+    return;
+  }
+
+  let response;
+  let data = null;
+  try {
+    response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey,
+      },
+      body: JSON.stringify(payload),
+    });
+    data = await response.json().catch(() => null);
+  } catch (error) {
+    setReminderMessage(`Não foi possível disparar o lembrete. Detalhe: ${error?.message || 'falha de rede'}`, 'error');
+    return;
+  }
+
+  if (!response.ok) {
+    const detail = data?.error || data?.message || `${response.status} ${response.statusText}`;
+    setReminderMessage(`Não foi possível disparar o lembrete. Detalhe: ${detail}`, 'error');
+    return;
+  }
+
+  state.reminder = normalizeReminderSettings({
+    ...state.reminder,
+    last_sent_at: data?.lastSentAt || new Date().toISOString(),
+    last_sent_by: data?.lastSentBy || state.auth.user?.email || 'manual',
+  });
+  renderReminderSettings();
+  setReminderMessage(`Lembrete enviado com sucesso para ${data?.recipientCount ?? 'os destinatários configurados'}.`, 'success');
 }
 
 async function updateAppUserFlags(userId, field, value) {
@@ -3068,6 +3353,9 @@ function exportData() {
 
 async function bootstrap() {
   document.addEventListener('copy', handleDocumentCopy);
+  state.reminder = getDefaultReminderSettings();
+  renderReminderScheduleOptions(state.reminder.recurrence, state.reminder.weekday);
+  renderReminderSettings();
   const presentOverlay = document.getElementById('present-overlay');
   if (presentOverlay) {
     presentOverlay.addEventListener('mousemove', updatePresentLaserPosition);
@@ -3081,6 +3369,9 @@ async function bootstrap() {
   if (adminUserForm) {
     adminUserForm.addEventListener('submit', submitAdminUser);
   }
+  document.getElementById('reminder-recurrence')?.addEventListener('change', event => {
+    renderReminderScheduleOptions(event.target.value, 1);
+  });
 
   showLoginScreen();
   setLoginMessage('Entre com seu email e senha para acessar a RPS.');
