@@ -299,7 +299,7 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
 .indicator-row.editor-formula-row td {
   background: #fff;
 }
-.indicator-row.editor-formula-row td,
+.indicator-row.editor-formula-row td:not(:first-child),
 .indicator-row.editor-formula-row .calc-val,
 .indicator-row.editor-formula-row .unit-tag,
 .indicator-row.editor-formula-row .clip-btn,
@@ -322,6 +322,11 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
 }
 .indicator-row.editor-formula-row .cell-input::placeholder {
   color: transparent !important;
+}
+.indicator-row.editor-formula-row td:first-child,
+.indicator-row.editor-formula-row td:first-child [contenteditable],
+.indicator-row.editor-formula-row td:first-child .admin-user-name-input {
+  color: var(--color-text-secondary) !important;
 }
 .row-action-btn {
   background: none;
