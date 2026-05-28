@@ -3567,6 +3567,21 @@ async function bootstrap() {
   registerAuthListener();
   renderAll();
 
+  // Trata retorno do link de confirmação de cadastro via email.
+  // O Supabase redireciona com #access_token= ou ?code= na URL.
+  // Aguardamos o supabase-js processar o hash antes de checar a sessão.
+  const hashStr = window.location.hash.replace('#', '?');
+  const hashParams = new URLSearchParams(hashStr);
+  const searchParams = new URLSearchParams(window.location.search);
+  if (
+    hashParams.get('access_token') ||
+    hashParams.get('code') ||
+    searchParams.get('code')
+  ) {
+    await new Promise(r => setTimeout(r, 800));
+    history.replaceState(null, '', window.location.pathname);
+  }
+
   const { data } = await supabaseClient.auth.getSession();
   await applyAuthSession(data.session);
   if (!state.auth.user) {
