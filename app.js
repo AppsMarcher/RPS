@@ -2162,6 +2162,9 @@ function formatVal(raw, unit) {
   if (unit === 'R$') {
     return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
+  if (unit === 'dias') {
+    return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
   return n % 1 === 0
     ? n.toLocaleString('pt-BR')
     : n.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
