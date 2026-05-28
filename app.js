@@ -89,6 +89,8 @@ let state = {
 let lbKey = null;
 let lbLabel = '';
 let lbImageIdx = 0;
+let lbZoom = 1;
+let attachmentManagerState = null;
 let resizeState = null;
 let supabaseClient = null;
 let saveTimer = null;
@@ -2438,23 +2440,145 @@ document.addEventListener('mousemove', e => {
   if (tt.classList.contains('visible')) posTooltip(e);
 });
 
+function getLightboxElement() {
+  return document.getElementById('lightbox');
+}
+
+function isPresentModeOpen() {
+  return document.getElementById('present-overlay')?.classList.contains('open');
+}
+
+function canDeleteAttachmentsInUi() {
+  return canEditData() && !isPresentModeOpen();
+}
+
+function setAttachmentManagerMessage(message, type = '') {
+  const el = document.getElementById('attachment-manager-message');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `login-message${type ? ` is-${type}` : ''}`;
+}
+
+function openAttachmentManager(ak, lbl) {
+  if (!canEditData()) return;
+  attachmentManagerState = { ak, lbl };
+  const title = document.getElementById('attachment-manager-title');
+  if (title) title.textContent = lbl;
+  document.getElementById('attachment-manager-input').value = '';
+  renderAttachmentManagerList();
+  setAttachmentManagerMessage('Selecione um ou mais arquivos para anexar.');
+  document.getElementById('attachment-manager-overlay')?.classList.add('open');
+}
+
+function closeAttachmentManager() {
+  document.getElementById('attachment-manager-overlay')?.classList.remove('open');
+  attachmentManagerState = null;
+}
+
+function renderAttachmentManagerList() {
+  const list = document.getElementById('attachment-manager-list');
+  if (!list || !attachmentManagerState) return;
+  const items = getAttachments(attachmentManagerState.ak);
+  if (!items.length) {
+    list.innerHTML = '<div class="admin-empty">Nenhum arquivo anexado nesta célula.</div>';
+    return;
+  }
+
+  const rows = items.map(att => `
+    <div class="attachment-manager-row">
+      <div class="attachment-manager-name">${att.name}</div>
+      <div class="attachment-manager-type">${getExt(att.name) || (isImageAttachment(att) ? 'imagem' : 'arquivo')}</div>
+      <div class="attachment-manager-actions">
+        <a class="attach-link-btn attachment-manager-open" href="${att.url}" download="${att.name}" target="_blank" rel="noopener noreferrer">Abrir</a>
+        <button class="lb-btn lb-btn-remove" type="button" onclick="confirmRemoveManagedAttachment('${att.id}','${att.name.replace(/'/g, "\\'")}')"><i class="ti ti-trash"></i> Excluir</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.innerHTML = `
+    <div class="attachment-manager-row header">
+      <div>Arquivo</div>
+      <div>Tipo</div>
+      <div>Ação</div>
+    </div>
+    ${rows}
+  `;
+}
+
+function confirmRemoveManagedAttachment(attId, attName) {
+  if (!attachmentManagerState) return;
+  const confirmed = confirm(`Excluir o anexo "${attName}"?\n\nEssa ação remove o arquivo da tela e do dado sincronizado deste mês.`);
+  if (!confirmed) return;
+  const next = getAttachments(attachmentManagerState.ak).filter(att => att.id !== attId);
+  setAttachments(attachmentManagerState.ak, next);
+  renderAttachmentManagerList();
+  renderBody();
+  markDirty();
+  setAttachmentManagerMessage('Anexo excluído com sucesso.', 'success');
+}
+
+function confirmAttachmentUpload() {
+  if (!attachmentManagerState) return;
+  const input = document.getElementById('attachment-manager-input');
+  const files = Array.from(input?.files || []);
+  if (!files.length) {
+    setAttachmentManagerMessage('Selecione pelo menos um arquivo para enviar.', 'error');
+    return;
+  }
+
+  setAttachmentManagerMessage('Enviando arquivos...');
+  Promise.all(files.map(file => new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = event => resolve(buildAttachment(file, event.target.result));
+    reader.readAsDataURL(file);
+  }))).then(newItems => {
+    setAttachments(attachmentManagerState.ak, [...getAttachments(attachmentManagerState.ak), ...newItems]);
+    renderAttachmentManagerList();
+    renderBody();
+    markDirty();
+    input.value = '';
+    setAttachmentManagerMessage('Arquivos anexados com sucesso.', 'success');
+  });
+}
+
+function getCurrentLightboxImage() {
+  const imgs = getImageAttachments(lbKey);
+  if (!imgs.length) return null;
+  return imgs[Math.min(lbImageIdx, imgs.length - 1)] || null;
+}
+
+function syncLightboxHost() {
+  const lightbox = getLightboxElement();
+  const presentOverlay = document.getElementById('present-overlay');
+  if (!lightbox || !presentOverlay) return;
+  const targetParent = presentOverlay.classList.contains('open') ? presentOverlay : document.body;
+  if (lightbox.parentElement !== targetParent) {
+    targetParent.appendChild(lightbox);
+  }
+}
+
 function openLightbox(ak, lbl) {
   lbKey = ak;
   lbLabel = lbl;
   lbImageIdx = 0;
+  lbZoom = 1;
+  syncLightboxHost();
   document.getElementById('lb-label').textContent = lbl;
   renderLightbox();
   document.getElementById('lightbox').classList.add('open');
 }
 
 function closeLightbox() {
-  document.getElementById('lightbox').classList.remove('open');
+  getLightboxElement()?.classList.remove('open');
   lbKey = null;
   lbLabel = '';
   lbImageIdx = 0;
+  lbZoom = 1;
+  syncLightboxHost();
 }
 
 function removeAttachment(ak, id) {
+  if (!canDeleteAttachmentsInUi()) return;
   const next = getAttachments(ak).filter(att => att.id !== id);
   setAttachments(ak, next);
   if (!next.length) {
@@ -2464,12 +2588,37 @@ function removeAttachment(ak, id) {
     renderLightbox();
   }
   renderBody();
+  markDirty();
+}
+
+function confirmRemoveAttachment(ak, id, label = 'este anexo') {
+  if (!canDeleteAttachmentsInUi()) return;
+  const confirmed = confirm(`Excluir ${label}?\n\nEssa ação remove o anexo da tela e do dado sincronizado deste mês.`);
+  if (!confirmed) return;
+  removeAttachment(ak, id);
+}
+
+function confirmRemoveCurrentAttachment() {
+  const current = getCurrentLightboxImage();
+  if (!current || !lbKey) return;
+  confirmRemoveAttachment(lbKey, current.id, `a imagem "${current.name}"`);
 }
 
 function lightboxNav(delta) {
   const imgs = getImageAttachments(lbKey);
   if (!imgs.length) return;
   lbImageIdx = (lbImageIdx + delta + imgs.length) % imgs.length;
+  lbZoom = 1;
+  renderLightbox();
+}
+
+function resetLightboxZoom() {
+  lbZoom = 1;
+  renderLightbox();
+}
+
+function lightboxZoom(delta) {
+  lbZoom = Math.max(0.6, Math.min(4, Number((lbZoom + delta).toFixed(2))));
   renderLightbox();
 }
 
@@ -2478,17 +2627,21 @@ function renderLightbox() {
   const docsWrap = document.getElementById('attach-docs');
   const imgs = getImageAttachments(lbKey);
   const docs = getDocumentAttachments(lbKey);
+  const canDelete = canDeleteAttachmentsInUi();
 
   preview.className = 'attach-preview';
   if (imgs.length) {
     const current = imgs[Math.min(lbImageIdx, imgs.length - 1)];
     preview.innerHTML = `<div class="attach-stage">
       <div class="attach-stage-main">
-        <img src="${current.url}" alt="${current.name}">
+        <div class="attach-stage-image-wrap">
+          <img src="${current.url}" alt="${current.name}" style="transform:scale(${lbZoom})">
+        </div>
       </div>
       <div class="attach-stage-bar">
         <div class="attach-stage-meta">${lbImageIdx + 1} de ${imgs.length} imagem(ns) · ${current.name}</div>
         <div class="attach-stage-nav">
+          ${canDelete ? `<button class="lb-btn lb-btn-remove" onclick="confirmRemoveAttachment('${lbKey}','${current.id}','a imagem &quot;${current.name.replace(/"/g, '&quot;')}&quot;')"><i class="ti ti-trash"></i> Excluir imagem</button>` : ''}
           ${imgs.length > 1 ? '<button class="lb-btn" onclick="lightboxNav(-1)"><i class="ti ti-arrow-left"></i> Anterior</button>' : ''}
           ${imgs.length > 1 ? '<button class="lb-btn" onclick="lightboxNav(1)">Próxima <i class="ti ti-arrow-right"></i></button>' : ''}
         </div>
@@ -2499,8 +2652,14 @@ function renderLightbox() {
     preview.innerHTML = 'Sem imagens nesta célula.';
   }
 
-  const docItems = docs.length
-    ? docs.map(att => `<div class="attach-doc-item">
+  if (!docs.length) {
+    docsWrap.innerHTML = '';
+    docsWrap.classList.add('empty');
+    return;
+  }
+
+  docsWrap.classList.remove('empty');
+  const docItems = docs.map(att => `<div class="attach-doc-item">
         <div class="attach-doc-main">
           <span class="attach-doc-icon"><i class="ti ${guessDocIcon(att)}"></i></span>
           <div style="min-width:0">
@@ -2510,9 +2669,9 @@ function renderLightbox() {
         </div>
         <div class="attach-doc-actions">
           <a class="attach-link-btn" href="${att.url}" download="${att.name}" target="_blank" rel="noopener noreferrer">Abrir</a>
+          ${canDelete ? `<button class="lb-btn lb-btn-remove" type="button" onclick="confirmRemoveAttachment('${lbKey}','${att.id}','o anexo &quot;${att.name.replace(/"/g, '&quot;')}&quot;')"><i class="ti ti-trash"></i> Excluir</button>` : ''}
         </div>
-      </div>`).join('')
-    : '<div class="attach-empty-list">Sem documentos anexados.</div>';
+      </div>`).join('');
 
   docsWrap.innerHTML = `<div class="attach-section-title">Documentos</div>
     <div class="attach-doc-list">${docItems}</div>`;
@@ -2535,6 +2694,17 @@ fileInput.addEventListener('change', () => {
     markDirty();
   });
   fileInput.value = '';
+});
+
+document.addEventListener('keydown', event => {
+  const lightbox = document.getElementById('lightbox');
+  if (!lightbox?.classList.contains('open')) return;
+  if (event.key === 'Escape') closeLightbox();
+  if (event.key === 'ArrowLeft') lightboxNav(-1);
+  if (event.key === 'ArrowRight') lightboxNav(1);
+  if (event.key === '+' || event.key === '=') lightboxZoom(0.2);
+  if (event.key === '-') lightboxZoom(-0.2);
+  if (event.key === '0') resetLightboxZoom();
 });
 
 function triggerUpload(ak, lbl) {
@@ -2756,7 +2926,7 @@ function renderBody() {
         }
         cb.onclick = () => {
           if (!canFillData) return;
-          triggerUpload(ak, lbl);
+          openAttachmentManager(ak, lbl);
         };
 
         wrap.appendChild(inp);
@@ -3022,6 +3192,7 @@ function openPresent() {
   state.presentIdx = state.focusIdx !== null ? state.focusIdx : 0;
   const overlay = document.getElementById('present-overlay');
   overlay.classList.add('open');
+  syncLightboxHost();
   document.getElementById('p-month-label').textContent = `${MESES[state.mesIdx]} ${state.ano}`;
   document.getElementById('p-header-sub').textContent = 'Acompanhamento de indicadores';
   renderPresentBody();
@@ -3030,6 +3201,7 @@ function openPresent() {
 
 function closePresent() {
   document.getElementById('present-overlay').classList.remove('open');
+  syncLightboxHost();
   const laser = document.getElementById('present-laser');
   if (laser) laser.style.opacity = '0';
   presentLaserVisible = false;

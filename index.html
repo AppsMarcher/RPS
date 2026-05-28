@@ -110,7 +110,8 @@
 </div>
 
 <!-- Modal de anexos -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+<div class="lightbox" id="lightbox">
+  <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
   <div class="attach-modal" onclick="event.stopPropagation()">
     <div class="attach-modal-head">
       <div>
@@ -118,6 +119,9 @@
         <div class="attach-modal-sub">Anexos da célula</div>
       </div>
       <div class="attach-modal-actions">
+        <button class="lb-btn" type="button" onclick="lightboxZoom(-0.2)"><i class="ti ti-zoom-out"></i> Diminuir</button>
+        <button class="lb-btn" type="button" onclick="lightboxZoom(0.2)"><i class="ti ti-zoom-in"></i> Ampliar</button>
+        <button class="lb-btn" type="button" onclick="resetLightboxZoom()"><i class="ti ti-focus-centered"></i> Ajustar</button>
         <button class="lb-btn" onclick="closeLightbox()"><i class="ti ti-x"></i> Fechar</button>
       </div>
     </div>
@@ -126,6 +130,31 @@
   </div>
 </div>
 <input type="file" class="file-input" id="file-input" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" multiple>
+
+<div class="admin-overlay" id="attachment-manager-overlay" onclick="closeAttachmentManager()">
+  <div class="admin-modal attachment-manager-modal" onclick="event.stopPropagation()">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title" id="attachment-manager-title">Gerenciar anexos</div>
+        <div class="admin-sub">Envie arquivos e remova anexos desta célula.</div>
+      </div>
+      <button class="btn" type="button" onclick="closeAttachmentManager()"><i class="ti ti-x"></i> Fechar</button>
+    </div>
+
+    <div class="admin-form">
+      <div class="attachment-upload-row">
+        <input class="login-input" id="attachment-manager-input" type="file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" multiple>
+        <button class="btn btn-primary" type="button" onclick="confirmAttachmentUpload()"><i class="ti ti-upload"></i> Enviar arquivos</button>
+      </div>
+      <div class="login-message" id="attachment-manager-message">Selecione um ou mais arquivos para anexar.</div>
+    </div>
+
+    <div class="admin-list">
+      <div class="admin-list-title">Arquivos carregados</div>
+      <div id="attachment-manager-list"></div>
+    </div>
+  </div>
+</div>
 
 <!-- Apresentacao -->
 <div class="present-overlay" id="present-overlay">
