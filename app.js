@@ -902,6 +902,66 @@ function setLoginBusy(isBusy) {
   if (passwordInput) passwordInput.disabled = isBusy;
 }
 
+function showEmailConfirmModal(email) {
+  // Remove modal anterior se existir
+  const existing = document.getElementById('email-confirm-modal');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'email-confirm-modal';
+  overlay.style.cssText = `
+    position:fixed; inset:0; z-index:99999;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.45); padding:24px;
+  `;
+
+  overlay.innerHTML = `
+    <div style="
+      background:#fff; border-radius:20px; padding:32px 28px;
+      width:min(420px,100%); box-shadow:0 24px 64px rgba(0,0,0,0.18);
+      text-align:center; position:relative;
+    ">
+      <div style="
+        width:56px; height:56px; border-radius:50%;
+        background:#E8F4EA; display:flex; align-items:center;
+        justify-content:center; margin:0 auto 18px;
+      ">
+        <i class="ti ti-mail-check" style="font-size:28px; color:#2F6B3B;"></i>
+      </div>
+      <div style="font-size:18px; font-weight:700; color:#1a1a1a; margin-bottom:10px;">
+        Confirme seu e-mail
+      </div>
+      <div style="font-size:14px; color:#666660; line-height:1.6; margin-bottom:8px;">
+        Enviamos um link de confirmação para
+      </div>
+      <div style="
+        font-size:14px; font-weight:600; color:#185FA5;
+        background:#E6F1FB; border-radius:10px; padding:8px 14px;
+        margin-bottom:18px; word-break:break-all;
+      ">${email}</div>
+      <div style="font-size:13px; color:#666660; line-height:1.6; margin-bottom:24px;">
+        Abra o e-mail e clique no link para ativar seu acesso.<br>
+        Depois, volte aqui e faça login normalmente.
+      </div>
+      <button onclick="document.getElementById('email-confirm-modal').remove()" style="
+        background:#185FA5; color:#fff; border:none; border-radius:12px;
+        padding:11px 28px; font-size:14px; font-weight:600;
+        cursor:pointer; font-family:inherit; width:100%;
+      ">
+        <i class="ti ti-check"></i> Entendido
+      </button>
+      <div style="font-size:11px; color:#a0a09a; margin-top:14px;">
+        Não recebeu? Verifique a caixa de spam ou solicite um novo acesso ao administrador.
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.remove();
+  });
+}
+
 function showLoginScreen() {
   document.getElementById('login-shell')?.classList.remove('hidden');
   document.getElementById('app-shell')?.classList.add('hidden');
@@ -1824,7 +1884,10 @@ async function submitLogin(event) {
       return;
     }
 
+    setLoginBusy(true);
+    setLoginMessage('Verificando autorização...');
     const signupAllowed = await canStartFirstAccess(emailNormalized);
+    setLoginBusy(false);
     if (!signupAllowed) {
       setLoginMessage('Este email ainda não foi liberado pelo administrador.', 'error');
       return;
@@ -1839,20 +1902,27 @@ async function submitLogin(event) {
       const { data, error } = await supabaseClient.auth.signUp({
         email: emailNormalized,
         password,
+        options: {
+          emailRedirectTo: 'https://appsmarcher.github.io/RPS/',
+        },
       });
 
       if (error) {
-        setLoginMessage(error.message || 'Não foi possível criar sua senha.', 'error');
+        setLoginMessage(error.message || 'Não foi possível criar seu acesso.', 'error');
         return;
       }
 
-      if (!data.session) {
-        setLoginMessage('Cadastro iniciado. Confirme o email, se o Supabase exigir confirmação.', 'success');
-      } else {
-        setLoginMessage('Senha criada com sucesso. Você já está autenticado.', 'success');
-      }
       state.auth.mode = 'login';
       renderAuthMode();
+      setLoginMessage('');
+
+      if (!data.session) {
+        // Supabase exige confirmação de email — mostra modal
+        showEmailConfirmModal(emailNormalized);
+      } else {
+        // Confirmação desativada no Supabase — já autenticado
+        setLoginMessage('Acesso criado com sucesso. Você já está autenticado.', 'success');
+      }
       return;
     }
 
