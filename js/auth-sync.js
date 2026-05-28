@@ -607,7 +607,7 @@ async function submitLogin(event) {
         email: emailNormalized,
         password,
         options: {
-          emailRedirectTo: 'https://appsmarcher.github.io/RPS/',
+          emailRedirectTo: APP_PUBLIC_URL,
         },
       });
 

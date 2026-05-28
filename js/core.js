@@ -120,6 +120,7 @@ const APP_USERS_TABLE = 'app_users';
 const APP_REMINDER_TABLE = 'app_reminder_settings';
 const REMINDER_FUNCTION_NAME = 'send-rps-reminder';
 const ATTACHMENTS_BUCKET = 'rps-attachments';
+const APP_PUBLIC_URL = 'https://rps.marcher.com.br/';
 const ADMIN_EMAIL = 'ricardo@marcher.com.br';
 
 const key        = (a,i,c)  => `${a}|${i}|${c}`;
@@ -804,15 +805,7 @@ function ensureReminderState() {
 }
 
 function getReminderAppUrl() {
-  try {
-    const href = window.location?.href || '';
-    if (!href) return '';
-    const url = new URL(href);
-    url.hash = '';
-    return url.toString();
-  } catch (_) {
-    return '';
-  }
+  return APP_PUBLIC_URL;
 }
 
 function getFunctionInvokeUrl(functionName) {
@@ -1224,15 +1217,7 @@ function toggleAuthMode() {
 }
 
 function getPasswordResetRedirectUrl() {
-  try {
-    const href = window.location?.href || '';
-    if (!/^https?:/i.test(href)) return null;
-    const url = new URL(href);
-    url.hash = '';
-    return url.toString();
-  } catch (_) {
-    return null;
-  }
+  return APP_PUBLIC_URL;
 }
 
 async function requestPasswordReset() {
