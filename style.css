@@ -380,11 +380,14 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
   gap: 10px;
   flex-wrap: wrap;
 }
+:root {
+  --grid-value-font-size: 12px;
+}
 .cell-input {
-  flex: 1; font-size: 12px; border: 0.5px solid transparent;
+  flex: 1; font-size: var(--grid-value-font-size); border: 0.5px solid transparent;
   border-radius: 4px; padding: 4px; background: transparent;
   color: var(--color-text-primary); text-align: right;
-  min-width: 0; width: 100%; font-family: var(--font);
+  min-width: 0; width: 100%; font-family: var(--font); line-height: 1.2;
 }
 .cell-input:hover { border-color: var(--color-border-s); background: var(--color-bg-secondary); }
 .cell-input:focus { outline: none; border-color: #378ADD; background: var(--color-bg-primary); box-shadow: 0 0 0 2px rgba(55,138,221,0.12); }
@@ -397,7 +400,7 @@ th.var-col     { background: #FAECE7; color: #4A1B0C; width: 12ch; min-width: 12
   display: flex; align-items: center; justify-content: flex-end;
   gap: 3px; padding: 3px 6px;
 }
-.meta-val { font-size: 12px; font-weight: 500; color: var(--color-text-primary); }
+.meta-val { font-size: var(--grid-value-font-size); font-weight: 500; color: var(--color-text-primary); line-height: 1.2; }
 
 /* CLIPE */
 .clip-btn {
@@ -450,7 +453,15 @@ td.grid-selected.focused-col { background: rgba(24,95,165,0.22); }
 .grid-selected-input:focus { box-shadow: 0 0 0 2px rgba(24,95,165,0.18); }
 td.consol-cell { background: rgba(234,243,222,0.4); }
 td.meta-cell   { background: rgba(250,238,218,0.4); }
-td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding: 0 6px; }
+td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); font-weight: 500; line-height: 1.2; padding: 0 6px; }
+.var-pos,
+.var-neg,
+.var-neu {
+  font-family: var(--font);
+  font-size: var(--grid-value-font-size);
+  font-weight: 500;
+  line-height: 1.2;
+}
 .var-pos { color: #3B6D11; }
 .var-neg { color: #A32D2D; }
 .var-neu { color: var(--color-text-tertiary); }
@@ -1056,6 +1067,13 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
   padding: 0 3px;
 }
 .p-meta-val  { color: #BA7517; font-weight: 700; }
+.p-var-pos,
+.p-var-neg,
+.p-var-neu {
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.2;
+}
 .p-var-pos   { color: #3B6D11; display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; font-weight: 700; }
 .p-var-neg   { color: #A32D2D; display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; font-weight: 700; }
 .p-var-neu   { color: var(--color-text-tertiary); }
@@ -1068,7 +1086,7 @@ th.var-col  { background: var(--color-bg-secondary); color: var(--color-text-sec
 
 td.mes-cell  { background: transparent; }
 td.meta-cell { background: transparent; }
-td.var-cell  { text-align:center; font-size:12px; font-weight:500; padding:0 6px; background: transparent; }
+td.var-cell  { text-align:center; font-size:var(--grid-value-font-size); font-weight:500; line-height: 1.2; padding:0 6px; background: transparent; }
 
 /* wrap das celulas calculadas (Mes e Meta) */
 .calc-cell-wrap {
@@ -1076,7 +1094,7 @@ td.var-cell  { text-align:center; font-size:12px; font-weight:500; padding:0 6px
   justify-content: flex-end; gap: 3px; padding: 3px 5px;
 }
 .calc-val {
-  font-size: 12px; font-weight: 500;
+  font-size: var(--grid-value-font-size); font-weight: 500; line-height: 1.2;
   color: var(--color-text-primary); white-space: nowrap;
 }
 

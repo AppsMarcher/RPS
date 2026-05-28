@@ -2250,41 +2250,239 @@ function findIndicatorByRef(areaId, refName) {
   return getIndicators(areaId).find(ind => slugifyLabel(ind.label) === refSlug) || null;
 }
 
-function evaluateFormula(raw, areaId, semana, stack) {
+// ─── Motor de fórmulas estilo Excel ───────────────────────────────────────────
+//
+// Sintaxe suportada (separador de argumentos: ponto-e-vírgula):
+//
+//   Funções:
+//     SOMA(a;b;c;...)          soma os argumentos
+//     MÉDIA(a;b;c;...)         média dos argumentos não nulos
+//     MÍNIMO(a;b;c;...)        menor valor
+//     MÁXIMO(a;b;c;...)        maior valor
+//     ARRED(número;casas)      arredonda para N casas decimais
+//     ABS(número)              valor absoluto
+//     SE(cond;v_verd;v_falso)  condicional (retorna número ou texto simples)
+//     SEERRO(expr;fallback)    retorna fallback se expr der erro ou null
+//
+//   Referências a indicadores (mesma área):
+//     NomeIndicador            valor da semana corrente do indicador
+//     {Nome Com Espaços}       idem, para nomes com espaços ou caracteres especiais
+//
+//   Referências a colunas da linha corrente:
+//     S1  S2  S3  S4  S5      valor digitado naquela semana específica
+//     MES  META               valor consolidado do mês / meta da linha
+//
+//   Referências a outra área:
+//     area.NomeIndicador       ex: comercial.Faturamento
+//
+//   Operadores:  + - * / ^ ( )  e comparações  > < >= <= = <>
+//
+//   Retrocompatibilidade: {NomeIndicador} continua funcionando.
+//
+// Perfis de acesso:
+//   - Admin    → pode digitar e ver fórmulas livremente em qualquer célula
+//   - Editor   → vê o RESULTADO calculado (célula desabilitada se política = fórmula)
+//   - Viewer   → sempre só leitura (sem inputs)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FORMULA_FUNCTIONS = {
+  SOMA:   args => args.reduce((a, b) => a + b, 0),
+  MÉDIA:  args => args.reduce((a, b) => a + b, 0) / args.length,
+  MINIMO: args => Math.min(...args),
+  MÍNIMO: args => Math.min(...args),
+  MAXIMO: args => Math.max(...args),
+  MÁXIMO: args => Math.max(...args),
+  ABS:    args => Math.abs(args[0]),
+  ARRED:  args => {
+    const casas = args[1] !== undefined ? Math.round(args[1]) : 0;
+    return parseFloat(args[0].toFixed(casas));
+  },
+};
+
+// Tokenizer simples para separar argumentos respeitando parênteses aninhados
+function splitFormulaArgs(str) {
+  const args = [];
+  let depth = 0, cur = '';
+  for (const ch of str) {
+    if (ch === '(' ) { depth++; cur += ch; }
+    else if (ch === ')') { depth--; cur += ch; }
+    else if (ch === ';' && depth === 0) { args.push(cur.trim()); cur = ''; }
+    else { cur += ch; }
+  }
+  if (cur.trim() !== '') args.push(cur.trim());
+  return args;
+}
+
+// Resolve o valor de uma coluna (S1-S5, MES, META) para a linha corrente
+function resolveColRef(colToken, areaId, indObj, semana, stack) {
+  const t = colToken.toUpperCase();
+  if (t === 'MES')  return calcMes(areaId, indObj);
+  if (t === 'META') return calcMeta(areaId, indObj);
+  // S1..S5 — se for a semana da coluna corrente usa calcWeekValue para suportar
+  // fórmulas aninhadas; caso contrário lê o dado direto para evitar recursão
+  if (/^S[1-5]$/.test(t)) {
+    const targetSemana = t; // ex: 'S1'
+    if (targetSemana === semana) return null; // evita auto-referência
+    return calcWeekValue(areaId, indObj, targetSemana, new Set(stack));
+  }
+  return undefined; // não é referência de coluna
+}
+
+// Resolve "area.Indicador" — cross-area reference
+function resolveCrossAreaRef(token, semana, stack) {
+  const dot = token.indexOf('.');
+  if (dot < 0) return undefined;
+  const areaSlug = slugifyLabel(token.slice(0, dot));
+  const indSlug  = slugifyLabel(token.slice(dot + 1));
+  const area = state.areas.find(a => slugifyLabel(a.nome) === areaSlug || a.id === areaSlug);
+  if (!area) return undefined;
+  const refInd = getIndicators(area.id).find(i => slugifyLabel(i.label) === indSlug);
+  if (!refInd) return undefined;
+  return calcWeekValue(area.id, refInd, semana, stack);
+}
+
+// Avalia uma expressão já limpa (números, operadores, parênteses)
+function evalArithmetic(expr) {
+  // Substitui ^ por ** para potenciação, converte <> para !=
+  const safe = expr
+    .replace(/\^/g, '**')
+    .replace(/<>/g, '!=')
+    .replace(/=/g, '==')
+    .replace(/!===/g, '!==')  // corrige triplo após substituição dupla
+    .replace(/====/g, '===');
+  if (!/^[\d+\-*/().!<>=&| \t\n]+$/.test(safe)) return null;
+  try {
+    const v = Function('"use strict"; return (' + safe + ');')();
+    return Number.isFinite(v) ? v : (v === true ? 1 : v === false ? 0 : null);
+  } catch (_) { return null; }
+}
+
+// Avalia recursivamente a fórmula ou sub-expressão
+function evalFormulaExpr(expr, areaId, indObj, semana, stack, depth) {
+  if (depth > 20) return null; // evita recursão infinita
+  expr = expr.trim();
+
+  // String literal entre aspas → retorna como texto (usado no SE)
+  if (/^"[^"]*"$/.test(expr)) return expr.slice(1, -1);
+
+  // Número literal
+  const num = parseFloat(expr.replace(',', '.'));
+  if (!isNaN(num) && String(num) === expr.replace(',', '.')) return num;
+
+  // SE(cond; v_verd; v_falso) — tratado antes do loop de funções
+  if (/^SE\s*\(/i.test(expr)) {
+    const inner = expr.replace(/^SE\s*\(/i, '').replace(/\)$/, '');
+    const parts = splitFormulaArgs(inner);
+    if (parts.length < 2) return null;
+    const cond = evalFormulaExpr(parts[0], areaId, indObj, semana, stack, depth + 1);
+    if (cond === null) return null;
+    const branch = (typeof cond === 'string' ? cond !== '' && cond !== '0' : !!cond)
+      ? parts[1] : (parts[2] || '"0"');
+    return evalFormulaExpr(branch, areaId, indObj, semana, stack, depth + 1);
+  }
+
+  // SEERRO(expr; fallback)
+  if (/^SEERRO\s*\(/i.test(expr)) {
+    const inner = expr.replace(/^SEERRO\s*\(/i, '').replace(/\)$/, '');
+    const parts = splitFormulaArgs(inner);
+    if (parts.length < 2) return null;
+    const tried = evalFormulaExpr(parts[0], areaId, indObj, semana, stack, depth + 1);
+    return tried !== null ? tried : evalFormulaExpr(parts[1], areaId, indObj, semana, stack, depth + 1);
+  }
+
+  // Funções: NOME(arg1;arg2;...)
+  const fnMatch = expr.match(/^([A-ZÀ-Ÿ_][A-ZÀ-Ÿ0-9_ÁÉÍÓÚÃÕÂÊÎÔÛÇÀÈÌÒÙ]*)\s*\((.+)\)$/i);
+  if (fnMatch) {
+    const fnName = fnMatch[1].toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // remove acentos para lookup
+      .normalize('NFC');
+    const rawArgs = splitFormulaArgs(fnMatch[2]);
+    const resolvedArgs = rawArgs.map(a => evalFormulaExpr(a, areaId, indObj, semana, stack, depth + 1));
+    if (resolvedArgs.some(v => v === null)) return null;
+    const numArgs = resolvedArgs.map(Number).filter(Number.isFinite);
+    if (!numArgs.length) return null;
+
+    // Lookup com e sem acentos
+    const fnKey = Object.keys(FORMULA_FUNCTIONS).find(k =>
+      k === fnName ||
+      k.normalize('NFD').replace(/[\u0300-\u036f]/g,'') === fnName
+    );
+    if (!fnKey) return null;
+    const result = FORMULA_FUNCTIONS[fnKey](numArgs);
+    return Number.isFinite(result) ? result : null;
+  }
+
+  // Referência entre chaves: {Nome do indicador}
+  const bracketRef = expr.match(/^\{([^}]+)\}$/);
+  if (bracketRef) {
+    const refInd = findIndicatorByRef(areaId, bracketRef[1]);
+    if (!refInd) return null;
+    return calcWeekValue(areaId, refInd, semana, stack);
+  }
+
+  // Referências de coluna: S1, S2, MES, META
+  const colVal = resolveColRef(expr, areaId, indObj, semana, stack);
+  if (colVal !== undefined) return colVal;
+
+  // Referência cross-área: area.Indicador
+  const crossVal = resolveCrossAreaRef(expr, semana, stack);
+  if (crossVal !== undefined) return crossVal;
+
+  // Referência a indicador pelo nome (sem chaves)
+  const refInd = findIndicatorByRef(areaId, expr);
+  if (refInd) return calcWeekValue(areaId, refInd, semana, stack);
+
+  // Expressão aritmética composta — substitui referências e avalia
+  let built = expr;
+  let hasRef = false;
+  let hasResolved = false;
+
+  // {Nome} dentro de expressão
+  built = built.replace(/\{([^}]+)\}/g, (_, name) => {
+    hasRef = true;
+    const ind2 = findIndicatorByRef(areaId, name);
+    if (!ind2) return '0';
+    const v = calcWeekValue(areaId, ind2, semana, stack);
+    if (v !== null) hasResolved = true;
+    return String(v ?? 0);
+  });
+
+  // Tokens de coluna dentro de expressão (S1, S2, MES, META)
+  built = built.replace(/\b(S[1-5]|MES|META)\b/gi, tok => {
+    hasRef = true;
+    const v = resolveColRef(tok, areaId, indObj, semana, stack);
+    if (v !== null && v !== undefined) hasResolved = true;
+    return String(v ?? 0);
+  });
+
+  // Referências cross-área dentro de expressão
+  built = built.replace(/\b([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]*)\.([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_ ]*)\b/g, (_, a, i) => {
+    hasRef = true;
+    const v = resolveCrossAreaRef(`${a}.${i}`, semana, stack);
+    if (v !== null && v !== undefined) hasResolved = true;
+    return String(v ?? 0);
+  });
+
+  // Tokens de indicador por nome
+  built = built.replace(/\b([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]*)\b/g, tok => {
+    const ind2 = findIndicatorByRef(areaId, tok);
+    if (!ind2) return tok;
+    hasRef = true;
+    const v = calcWeekValue(areaId, ind2, semana, stack);
+    if (v !== null) hasResolved = true;
+    return String(v ?? 0);
+  });
+
+  if (hasRef && !hasResolved) return null;
+
+  return evalArithmetic(built);
+}
+
+function evaluateFormula(raw, areaId, semana, stack, indObj) {
   let expr = String(raw || '').trim();
   if (!expr.startsWith('=')) return null;
-  expr = expr.slice(1);
-  let hasReference = false;
-  let hasResolvedReferenceValue = false;
-
-  expr = expr.replace(/\{([^}]+)\}/g, (_, refName) => {
-    hasReference = true;
-    const refInd = findIndicatorByRef(areaId, refName);
-    if (!refInd) return '0';
-    const val = calcWeekValue(areaId, refInd, semana, stack);
-    if (val !== null) hasResolvedReferenceValue = true;
-    return String(val ?? 0);
-  });
-
-  expr = expr.replace(/\b[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]*\b/g, token => {
-    const refInd = findIndicatorByRef(areaId, token);
-    if (!refInd) return token;
-    hasReference = true;
-    const val = calcWeekValue(areaId, refInd, semana, stack);
-    if (val !== null) hasResolvedReferenceValue = true;
-    return String(val ?? 0);
-  });
-
-  if (hasReference && !hasResolvedReferenceValue) return null;
-
-  if (!/^[0-9+\-*/().\s]+$/.test(expr)) return null;
-
-  try {
-    const val = Function(`"use strict"; return (${expr});`)();
-    return Number.isFinite(val) ? val : null;
-  } catch (_) {
-    return null;
-  }
+  expr = expr.slice(1).trim();
+  return evalFormulaExpr(expr, areaId, indObj || null, semana, stack, 0);
 }
 
 function calcWeekValue(aId, ind, semana, stack = new Set()) {
@@ -2303,7 +2501,7 @@ function calcWeekValue(aId, ind, semana, stack = new Set()) {
 
   const raw = state.dados[key(aId, ind.id, semana)];
   if (typeof raw === 'string' && raw.trim().startsWith('=')) {
-    const formulaVal = evaluateFormula(raw, aId, semana, stack);
+    const formulaVal = evaluateFormula(raw, aId, semana, stack, ind);
     stack.delete(stackKey);
     return formulaVal;
   }
@@ -2836,7 +3034,7 @@ function renderHeader() {
     th = document.createElement('th');
     th.className = 'week-th' + (state.focusIdx === i ? ' focused' : '');
     th.onclick = () => toggleFocus(i);
-    th.innerHTML = makeHeaderContent(`<i class="ti ti-calendar-week" style="font-size:10px;vertical-align:-1px;margin-right:3px"></i>${s}`, s);
+    th.innerHTML = makeHeaderContent(`<i class="ti ti-calendar-week" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>${s}`, s);
     tr.appendChild(th);
   });
 
@@ -2847,7 +3045,7 @@ function renderHeader() {
 
   th = document.createElement('th');
   th.className = 'meta-col';
-  th.innerHTML = makeHeaderContent(`<i class="ti ti-target" style="font-size:10px;vertical-align:-1px;margin-right:3px"></i>Meta`, 'meta');
+  th.innerHTML = makeHeaderContent(`<i class="ti ti-target" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>Meta`, 'meta');
   tr.appendChild(th);
 
   th = document.createElement('th');
@@ -2977,6 +3175,13 @@ function renderBody() {
         };
         inp.onkeydown = e => {
           handleGridEnterNavigation(e);
+        };
+        inp.oninput = e => {
+          if (canEditRows && e.target.value === '=') {
+            showFormulaHint(e.target);
+          } else {
+            hideFormulaHint();
+          }
         };
         inp.onpaste = handleGridPaste;
         inp.onpointerdown = handleGridInputPointerDown;
@@ -3324,7 +3529,7 @@ function renderPresentBody() {
     th = document.createElement('th');
     th.className = 'week-th' + (state.presentIdx === i ? ' focused' : '');
     th.onclick = () => setPresentWeek(i);
-    th.innerHTML = makeHeaderContent(`<i class="ti ti-calendar-week" style="font-size:10px;vertical-align:-1px;margin-right:3px"></i>${s}`, s);
+    th.innerHTML = makeHeaderContent(`<i class="ti ti-calendar-week" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>${s}`, s);
     tr.appendChild(th);
   });
 
@@ -3335,7 +3540,7 @@ function renderPresentBody() {
 
   th = document.createElement('th');
   th.className = 'meta-col';
-  th.innerHTML = makeHeaderContent(`<i class="ti ti-target" style="font-size:10px;vertical-align:-1px;margin-right:3px"></i>Meta`, 'meta');
+  th.innerHTML = makeHeaderContent(`<i class="ti ti-target" style="font-size:11px;vertical-align:-1px;margin-right:3px"></i>Meta`, 'meta');
   tr.appendChild(th);
 
   th = document.createElement('th');
@@ -3603,6 +3808,62 @@ function exportData() {
   a.download = `RPS_MarcherBrasil_${MESES[state.mesIdx]}_${state.ano}.tsv`;
   a.click();
 }
+
+// ─── Tooltip de ajuda de fórmulas (aparece ao digitar "=" numa célula) ────────
+const FORMULA_HINT_HTML = `
+  <div style="font-weight:700;font-size:12px;margin-bottom:8px;color:#1a1a1a">
+    <i class="ti ti-function" style="color:#185FA5"></i> Fórmulas disponíveis
+  </div>
+  <div style="display:grid;gap:5px;font-size:11px;line-height:1.5;color:#333">
+    <div><code>=SOMA(S1;S2;S3)</code> — soma valores</div>
+    <div><code>=MÉDIA(S1;S2;S3;S4)</code> — média</div>
+    <div><code>=MÍNIMO(S1;S2)</code> / <code>MÁXIMO(S1;S2)</code></div>
+    <div><code>=ARRED(Faturamento/4;2)</code> — arredonda</div>
+    <div><code>=ABS(Meta-Faturamento)</code> — valor absoluto</div>
+    <div><code>=SE(Faturamento&gt;1000;"Atingiu";"Abaixo")</code></div>
+    <div><code>=SEERRO(Nacional/Faturamento;0)</code></div>
+    <div style="margin-top:6px;color:#666">
+      <strong>Referências:</strong><br>
+      <code>S1 S2 S3 S4 S5</code> — semanas da linha<br>
+      <code>MES</code> <code>META</code> — consolidado / meta<br>
+      <code>NomeIndicador</code> — outro indicador desta área<br>
+      <code>area.Indicador</code> — indicador de outra área<br>
+      <code>{Nome com espaços}</code> — nome entre chaves
+    </div>
+  </div>
+`;
+
+function showFormulaHint(inputEl) {
+  hideFormulaHint();
+  if (!canEditStructure()) return;
+  const hint = document.createElement('div');
+  hint.id = 'formula-hint';
+  hint.innerHTML = FORMULA_HINT_HTML;
+  hint.style.cssText = `
+    position:fixed; z-index:9000;
+    background:#fff; border:1px solid rgba(0,0,0,0.12);
+    border-radius:12px; padding:14px 16px;
+    box-shadow:0 8px 28px rgba(0,0,0,0.14);
+    min-width:280px; max-width:340px;
+    pointer-events:none;
+  `;
+  document.body.appendChild(hint);
+
+  // Posiciona abaixo do input
+  const rect = inputEl.getBoundingClientRect();
+  const top = rect.bottom + 6;
+  const left = Math.min(rect.left, window.innerWidth - 350);
+  hint.style.top = `${top}px`;
+  hint.style.left = `${Math.max(8, left)}px`;
+}
+
+function hideFormulaHint() {
+  document.getElementById('formula-hint')?.remove();
+}
+
+document.addEventListener('focusout', () => {
+  setTimeout(hideFormulaHint, 200);
+}, true);
 
 async function bootstrap() {
   document.addEventListener('copy', handleDocumentCopy);
