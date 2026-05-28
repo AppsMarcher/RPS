@@ -462,10 +462,44 @@ async function exitFullscreen() {
   }
 }
 
+function applyPresentationPreferences() {
+  const overlay = document.getElementById('present-overlay');
+  if (!overlay) return;
+  overlay.classList.toggle('present-dark-mode', !!state.presentation.darkMode);
+  overlay.classList.toggle('present-font-boost', !!state.presentation.fontBoost);
+  updatePresentationToolbar();
+}
+
+function updatePresentationToolbar() {
+  const darkBtn = document.getElementById('present-dark-toggle');
+  const fontBtn = document.getElementById('present-font-toggle');
+  if (darkBtn) {
+    darkBtn.classList.toggle('is-active', !!state.presentation.darkMode);
+    darkBtn.setAttribute('aria-pressed', state.presentation.darkMode ? 'true' : 'false');
+  }
+  if (fontBtn) {
+    fontBtn.classList.toggle('is-active', !!state.presentation.fontBoost);
+    fontBtn.setAttribute('aria-pressed', state.presentation.fontBoost ? 'true' : 'false');
+  }
+}
+
+function togglePresentDarkMode() {
+  state.presentation.darkMode = !state.presentation.darkMode;
+  savePresentationPreferences();
+  applyPresentationPreferences();
+}
+
+function togglePresentFontBoost() {
+  state.presentation.fontBoost = !state.presentation.fontBoost;
+  savePresentationPreferences();
+  applyPresentationPreferences();
+}
+
 function openPresent() {
   state.presentIdx = state.focusIdx !== null ? state.focusIdx : 0;
   const overlay = document.getElementById('present-overlay');
   overlay.classList.add('open');
+  applyPresentationPreferences();
   syncLightboxHost();
   document.getElementById('p-month-label').textContent = `${MESES[state.mesIdx]} ${state.ano}`;
   document.getElementById('p-header-sub').textContent = 'Acompanhamento de indicadores';

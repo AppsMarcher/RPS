@@ -55,6 +55,10 @@ let state = {
   semanas:    ['S1','S2','S3','S4','S5'],
   focusIdx:   null,
   presentIdx: 0,
+  presentation: {
+    darkMode: false,
+    fontBoost: false,
+  },
   columnWidths: {},
   auth: {
     user: null,
@@ -236,6 +240,24 @@ function loadColumnWidths() {
     }
   } catch (_) {}
   ensureColumnWidths();
+}
+
+function savePresentationPreferences() {
+  try {
+    localStorage.setItem('rps_presentation_prefs', JSON.stringify(state.presentation));
+  } catch (_) {}
+}
+
+function loadPresentationPreferences() {
+  try {
+    const raw = localStorage.getItem('rps_presentation_prefs');
+    if (raw) {
+      state.presentation = {
+        ...state.presentation,
+        ...JSON.parse(raw),
+      };
+    }
+  } catch (_) {}
 }
 
 function renderColgroup(targetId) {

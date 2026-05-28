@@ -24,6 +24,8 @@
   setLoginMessage('Entre com seu email e senha para acessar a RPS.');
   renderAuthMode();
   loadColumnWidths();
+  loadPresentationPreferences();
+  applyPresentationPreferences();
   initData();
   initSupabase();
   if (!supabaseClient) return;

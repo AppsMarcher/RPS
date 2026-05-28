@@ -950,6 +950,16 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   cursor: none;
 }
 .present-overlay.open { display: flex; }
+.present-toggle-btn {
+  min-width: 132px;
+  justify-content: center;
+}
+.present-toggle-btn.is-active {
+  background: #185FA5;
+  border-color: #185FA5;
+  color: #fff;
+  box-shadow: 0 10px 24px rgba(24,95,165,0.24);
+}
 .present-laser {
   position: fixed;
   top: 0;
@@ -1077,6 +1087,166 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
 .p-var-pos   { color: #3B6D11; display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; font-weight: 700; }
 .p-var-neg   { color: #A32D2D; display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; font-weight: 700; }
 .p-var-neu   { color: var(--color-text-tertiary); }
+
+.present-overlay.present-font-boost .header-title {
+  font-size: 17px;
+}
+.present-overlay.present-font-boost .header-sub {
+  font-size: 14px;
+}
+.present-overlay.present-font-boost .month-label {
+  font-size: 15px;
+}
+.present-overlay.present-font-boost .focus-badge {
+  font-size: 13px;
+}
+.present-overlay.present-font-boost th {
+  font-size: 13px;
+}
+.present-overlay.present-font-boost .indicator-row td:first-child {
+  font-size: 14px;
+}
+.present-overlay.present-font-boost .present-cell-val,
+.present-overlay.present-font-boost .p-var-pos,
+.present-overlay.present-font-boost .p-var-neg,
+.present-overlay.present-font-boost .p-var-neu {
+  font-size: 14px;
+}
+
+.present-overlay.present-dark-mode {
+  background:
+    radial-gradient(circle at top center, rgba(35,78,124,0.32), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(195,48,42,0.18), transparent 26%),
+    linear-gradient(180deg, #070b11 0%, #0d1219 48%, #121923 100%);
+}
+.present-overlay.present-dark-mode .header {
+  background: rgba(10, 15, 22, 0.88);
+  border-color: rgba(139, 167, 201, 0.18);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.26);
+}
+.present-overlay.present-dark-mode .header-title,
+.present-overlay.present-dark-mode .present-cell-val,
+.present-overlay.present-dark-mode .attach-modal-title {
+  color: #F5F8FC;
+}
+.present-overlay.present-dark-mode .header-sub,
+.present-overlay.present-dark-mode .month-label,
+.present-overlay.present-dark-mode .attach-stage-meta,
+.present-overlay.present-dark-mode .p-var-neu {
+  color: #A8B5C7;
+}
+.present-overlay.present-dark-mode .focus-badge {
+  background: rgba(39,112,196,0.24);
+  color: #E7F1FF;
+  border: 1px solid rgba(77,145,223,0.34);
+}
+.present-overlay.present-dark-mode .table-wrap {
+  background: rgba(9, 14, 21, 0.82);
+  border-color: rgba(139, 167, 201, 0.14);
+}
+.present-overlay.present-dark-mode th,
+.present-overlay.present-dark-mode td {
+  border-color: rgba(104, 126, 154, 0.18);
+}
+.present-overlay.present-dark-mode th {
+  background: rgba(16, 24, 34, 0.96);
+  color: #B7C6D8;
+}
+.present-overlay.present-dark-mode #present-main-table .week-th:hover {
+  background: rgba(39,112,196,0.26);
+  color: #F3F8FF;
+}
+.present-overlay.present-dark-mode .area-header-row td {
+  background: rgba(20, 31, 45, 0.98);
+  color: #E6EDF7;
+}
+.present-overlay.present-dark-mode .indicator-row td:first-child {
+  color: #D7E1ED;
+}
+.present-overlay.present-dark-mode td.focused-col {
+  background: rgba(42, 96, 160, 0.22);
+}
+.present-overlay.present-dark-mode .present-clip-btn,
+.present-overlay.present-dark-mode .present-count {
+  color: #EAF3FF;
+}
+.present-overlay.present-dark-mode .present-clip-btn:hover {
+  background: rgba(77,145,223,0.16);
+}
+.present-overlay.present-dark-mode .p-meta-val {
+  color: #FFBE5C;
+}
+.present-overlay.present-dark-mode .p-var-pos {
+  color: #7BE495;
+}
+.present-overlay.present-dark-mode .p-var-neg {
+  color: #FF8F8F;
+}
+.present-overlay.present-dark-mode .lightbox-backdrop {
+  background: linear-gradient(180deg, rgba(4,8,14,0.94), rgba(10,15,23,0.92));
+}
+.present-overlay.present-dark-mode .attach-modal {
+  background: linear-gradient(180deg, #101722, #0c131d);
+  border-color: rgba(102, 131, 168, 0.18);
+  box-shadow: 0 28px 72px rgba(0, 0, 0, 0.42);
+}
+.present-overlay.present-dark-mode .attach-modal-head {
+  background: linear-gradient(180deg, rgba(17,25,37,0.98), rgba(13,19,29,0.96));
+  border-bottom-color: rgba(102, 131, 168, 0.16);
+}
+.present-overlay.present-dark-mode .attach-modal-sub,
+.present-overlay.present-dark-mode .attach-section-title,
+.present-overlay.present-dark-mode .attach-doc-type,
+.present-overlay.present-dark-mode .attach-empty-list {
+  color: #9FB0C5;
+}
+.present-overlay.present-dark-mode .attach-preview {
+  background: linear-gradient(180deg, #0b1018, #111927);
+}
+.present-overlay.present-dark-mode .attach-preview.empty {
+  color: #A8B5C7;
+}
+.present-overlay.present-dark-mode .attach-stage-main {
+  background: linear-gradient(180deg, #0d141d, #141d29);
+  border-color: rgba(102, 131, 168, 0.16);
+}
+.present-overlay.present-dark-mode .attach-stage-main img {
+  background: #0f1620;
+}
+.present-overlay.present-dark-mode .attach-doc-item {
+  background: rgba(17, 25, 37, 0.92);
+  border-color: rgba(102, 131, 168, 0.14);
+}
+.present-overlay.present-dark-mode .attach-doc-preview,
+.present-overlay.present-dark-mode .attachment-pdf-thumb {
+  background: #0f1620;
+  border-color: rgba(102, 131, 168, 0.14);
+}
+.present-overlay.present-dark-mode .attach-doc-name {
+  color: #EAF1FA;
+}
+.present-overlay.present-dark-mode .attach-doc-icon {
+  background: rgba(77,145,223,0.16);
+  color: #9CC6FF;
+}
+.present-overlay.present-dark-mode .attach-link-btn,
+.present-overlay.present-dark-mode .lb-btn {
+  background: rgba(17, 26, 38, 0.96);
+  color: #E8F0FB;
+  border-color: rgba(102, 131, 168, 0.16);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+}
+.present-overlay.present-dark-mode .attach-link-btn:hover,
+.present-overlay.present-dark-mode .lb-btn:hover {
+  background: rgba(29, 42, 59, 0.96);
+}
+.present-overlay.present-dark-mode .lb-btn-remove {
+  border-color: rgba(210, 108, 108, 0.26);
+  color: #FFB3B3;
+}
+.present-overlay.present-dark-mode .lb-btn-remove:hover {
+  background: rgba(126, 39, 39, 0.28);
+}
 
 /* COLUNAS MES E META (novas) */
 th.mes-col  { background: var(--color-bg-secondary); color: var(--color-text-secondary); width: 12ch; min-width: 12ch; }
