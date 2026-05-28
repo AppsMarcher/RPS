@@ -2402,6 +2402,10 @@ function guessDocIcon(att) {
   return 'ti-file-description';
 }
 
+function isPdfAttachment(att) {
+  return getExt(att?.name || '') === 'pdf' || (att?.type || '') === 'application/pdf';
+}
+
 function buildAttachment(file, url) {
   const type = file.type || '';
   const ext = getExt(file.name);
@@ -2489,10 +2493,13 @@ function renderAttachmentManagerList() {
 
   const rows = items.map(att => `
     <div class="attachment-manager-row">
-      <div class="attachment-manager-name">${att.name}</div>
+      <div class="attachment-manager-main">
+        ${isPdfAttachment(att) ? `<div class="attachment-pdf-thumb"><iframe src="${att.url}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH" title="${att.name}"></iframe></div>` : ''}
+        <div class="attachment-manager-name">${att.name}</div>
+      </div>
       <div class="attachment-manager-type">${getExt(att.name) || (isImageAttachment(att) ? 'imagem' : 'arquivo')}</div>
       <div class="attachment-manager-actions">
-        <a class="attach-link-btn attachment-manager-open" href="${att.url}" download="${att.name}" target="_blank" rel="noopener noreferrer">Abrir</a>
+        <a class="attach-link-btn attachment-manager-open" href="${att.url}" target="_blank" rel="noopener noreferrer">Visualizar</a>
         <button class="lb-btn lb-btn-remove" type="button" onclick="confirmRemoveManagedAttachment('${att.id}','${att.name.replace(/'/g, "\\'")}')"><i class="ti ti-trash"></i> Excluir</button>
       </div>
     </div>
@@ -2664,6 +2671,7 @@ function renderLightbox() {
   docsWrap.classList.remove('empty');
   const docItems = docs.map(att => `<div class="attach-doc-item">
         <div class="attach-doc-main">
+          ${isPdfAttachment(att) ? `<div class="attach-doc-preview"><iframe src="${att.url}#toolbar=0&navpanes=0&scrollbar=0&page=1&view=FitH" title="${att.name}"></iframe></div>` : ''}
           <span class="attach-doc-icon"><i class="ti ${guessDocIcon(att)}"></i></span>
           <div style="min-width:0">
             <div class="attach-doc-name">${att.name}</div>
@@ -2671,7 +2679,7 @@ function renderLightbox() {
           </div>
         </div>
         <div class="attach-doc-actions">
-          <a class="attach-link-btn" href="${att.url}" download="${att.name}" target="_blank" rel="noopener noreferrer">Abrir</a>
+          <a class="attach-link-btn" href="${att.url}" target="_blank" rel="noopener noreferrer">Visualizar</a>
           ${canDelete ? `<button class="lb-btn lb-btn-remove" type="button" onclick="confirmRemoveAttachment('${lbKey}','${att.id}','o anexo &quot;${att.name.replace(/"/g, '&quot;')}&quot;')"><i class="ti ti-trash"></i> Excluir</button>` : ''}
         </div>
       </div>`).join('');

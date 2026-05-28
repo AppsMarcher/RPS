@@ -594,6 +594,23 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
   display: flex; align-items: center; gap: 10px;
   min-width: 0;
 }
+.attach-doc-preview,
+.attachment-pdf-thumb {
+  width: 78px;
+  height: 96px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(24,95,165,0.08);
+  background: #fff;
+  flex-shrink: 0;
+}
+.attach-doc-preview iframe,
+.attachment-pdf-thumb iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
 .attach-doc-icon {
   width: 34px; height: 34px; border-radius: 10px;
   background: rgba(24,95,165,0.12); color: #5e9bd4;
@@ -640,6 +657,13 @@ td.var-cell    { text-align: center; font-size: 12px; font-weight: 500; padding:
   padding: 11px 12px;
   border-bottom: 0.5px solid rgba(0,0,0,0.08);
   background: #fff;
+}
+
+.attachment-manager-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .attachment-manager-row.header {
