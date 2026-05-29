@@ -75,6 +75,7 @@ let state = {
     status: 'offline',
     message: 'Supabase não configurado',
     lastSuccessAt: '',
+    basePayload: null,
   },
   areas:      JSON.parse(JSON.stringify(AREAS)),
   indicadores: {},

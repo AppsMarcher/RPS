@@ -88,8 +88,132 @@ function resetStateData() {
   state.gridSelection = null;
 }
 
+function cloneSnapshotValue(value) {
+  if (value === undefined) return undefined;
+  return JSON.parse(JSON.stringify(value));
+}
+
+function normalizeSnapshotPayload(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  return {
+    version: Number(source.version) || 2,
+    areas: Array.isArray(source.areas) ? cloneSnapshotValue(source.areas) : JSON.parse(JSON.stringify(AREAS)),
+    indicadores: source.indicadores && typeof source.indicadores === 'object' ? cloneSnapshotValue(source.indicadores) : {},
+    unidades: source.unidades && typeof source.unidades === 'object' ? cloneSnapshotValue(source.unidades) : {},
+    dados: source.dados && typeof source.dados === 'object' ? cloneSnapshotValue(source.dados) : {},
+    cellStyles: source.cellStyles && typeof source.cellStyles === 'object' ? cloneSnapshotValue(source.cellStyles) : {},
+    comentarios: source.comentarios && typeof source.comentarios === 'object' ? cloneSnapshotValue(source.comentarios) : {},
+    dadosMes: source.dadosMes && typeof source.dadosMes === 'object' ? cloneSnapshotValue(source.dadosMes) : {},
+    dadosMeta: source.dadosMeta && typeof source.dadosMeta === 'object' ? cloneSnapshotValue(source.dadosMeta) : {},
+    anexos: source.anexos && typeof source.anexos === 'object' ? cloneSnapshotValue(source.anexos) : {},
+    modoMes: source.modoMes && typeof source.modoMes === 'object' ? cloneSnapshotValue(source.modoMes) : {},
+    modoMeta: source.modoMeta && typeof source.modoMeta === 'object' ? cloneSnapshotValue(source.modoMeta) : {},
+  };
+}
+
+function setSyncBasePayload(payload) {
+  state.sync.basePayload = normalizeSnapshotPayload(payload);
+}
+
+function getSyncBasePayload() {
+  return normalizeSnapshotPayload(state.sync.basePayload);
+}
+
+function areSnapshotValuesEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function getSnapshotEntry(obj, key) {
+  if (obj && Object.prototype.hasOwnProperty.call(obj, key)) {
+    return { exists: true, value: obj[key] };
+  }
+  return { exists: false, value: undefined };
+}
+
+function areSnapshotEntriesEqual(left, right) {
+  return left.exists === right.exists && areSnapshotValuesEqual(left.value, right.value);
+}
+
+function resolveMergedEntry(baseEntry, remoteEntry, localEntry, mergeMeta) {
+  const localChanged = !areSnapshotEntriesEqual(localEntry, baseEntry);
+  const remoteChanged = !areSnapshotEntriesEqual(remoteEntry, baseEntry);
+
+  if (localChanged && !remoteChanged) return localEntry;
+  if (!localChanged && remoteChanged) return remoteEntry;
+  if (!localChanged && !remoteChanged) return remoteEntry;
+  if (areSnapshotEntriesEqual(localEntry, remoteEntry)) return localEntry;
+
+  mergeMeta.conflicts += 1;
+  return localEntry;
+}
+
+function mergeSnapshotMapSection(baseSection, remoteSection, localSection, mergeMeta) {
+  const base = baseSection || {};
+  const remote = remoteSection || {};
+  const local = localSection || {};
+  const result = {};
+  const keys = new Set([
+    ...Object.keys(base),
+    ...Object.keys(remote),
+    ...Object.keys(local),
+  ]);
+
+  keys.forEach(key => {
+    const chosen = resolveMergedEntry(
+      getSnapshotEntry(base, key),
+      getSnapshotEntry(remote, key),
+      getSnapshotEntry(local, key),
+      mergeMeta
+    );
+    if (chosen.exists) {
+      result[key] = cloneSnapshotValue(chosen.value);
+    }
+  });
+
+  return result;
+}
+
+function mergeSnapshotWholeSection(baseValue, remoteValue, localValue, mergeMeta) {
+  const localChanged = !areSnapshotValuesEqual(localValue, baseValue);
+  const remoteChanged = !areSnapshotValuesEqual(remoteValue, baseValue);
+
+  if (localChanged && !remoteChanged) return cloneSnapshotValue(localValue);
+  if (!localChanged && remoteChanged) return cloneSnapshotValue(remoteValue);
+  if (!localChanged && !remoteChanged) return cloneSnapshotValue(remoteValue);
+  if (areSnapshotValuesEqual(localValue, remoteValue)) return cloneSnapshotValue(localValue);
+
+  mergeMeta.conflicts += 1;
+  return cloneSnapshotValue(localValue);
+}
+
+function mergeSnapshotPayloads(basePayload, remotePayload, localPayload) {
+  const base = normalizeSnapshotPayload(basePayload);
+  const remote = normalizeSnapshotPayload(remotePayload);
+  const local = normalizeSnapshotPayload(localPayload);
+  const mergeMeta = { conflicts: 0 };
+
+  return {
+    payload: {
+      version: Math.max(base.version || 2, remote.version || 2, local.version || 2, 2),
+      areas: mergeSnapshotWholeSection(base.areas, remote.areas, local.areas, mergeMeta),
+      indicadores: mergeSnapshotMapSection(base.indicadores, remote.indicadores, local.indicadores, mergeMeta),
+      unidades: mergeSnapshotMapSection(base.unidades, remote.unidades, local.unidades, mergeMeta),
+      dados: mergeSnapshotMapSection(base.dados, remote.dados, local.dados, mergeMeta),
+      cellStyles: mergeSnapshotMapSection(base.cellStyles, remote.cellStyles, local.cellStyles, mergeMeta),
+      comentarios: mergeSnapshotMapSection(base.comentarios, remote.comentarios, local.comentarios, mergeMeta),
+      dadosMes: mergeSnapshotMapSection(base.dadosMes, remote.dadosMes, local.dadosMes, mergeMeta),
+      dadosMeta: mergeSnapshotMapSection(base.dadosMeta, remote.dadosMeta, local.dadosMeta, mergeMeta),
+      anexos: mergeSnapshotMapSection(base.anexos, remote.anexos, local.anexos, mergeMeta),
+      modoMes: mergeSnapshotMapSection(base.modoMes, remote.modoMes, local.modoMes, mergeMeta),
+      modoMeta: mergeSnapshotMapSection(base.modoMeta, remote.modoMeta, local.modoMeta, mergeMeta),
+    },
+    conflicts: mergeMeta.conflicts,
+  };
+}
+
 function resetForSignedOut() {
   clearTimeout(saveTimer);
+  state.sync.basePayload = null;
   closePresent();
   resetStateData();
   initData();
@@ -260,21 +384,22 @@ async function confirmCopyMonthConfiguration() {
 
 function applySnapshotPayload(payload) {
   resetStateData();
+  const normalized = normalizeSnapshotPayload(payload);
   if (!payload || typeof payload !== 'object') {
     initData();
     return;
   }
-  state.areas = Array.isArray(payload.areas) ? payload.areas : JSON.parse(JSON.stringify(AREAS));
-  state.indicadores = payload.indicadores || {};
-  state.unidades = payload.unidades || {};
-  state.dados = payload.dados || {};
-  state.cellStyles = payload.cellStyles || {};
-  state.comentarios = payload.comentarios || {};
-  state.dadosMes = payload.dadosMes || {};
-  state.dadosMeta = payload.dadosMeta || {};
-  state.anexos = payload.anexos || {};
-  state.modoMes = payload.modoMes || {};
-  state.modoMeta = payload.modoMeta || {};
+  state.areas = normalized.areas;
+  state.indicadores = normalized.indicadores;
+  state.unidades = normalized.unidades;
+  state.dados = normalized.dados;
+  state.cellStyles = normalized.cellStyles;
+  state.comentarios = normalized.comentarios;
+  state.dadosMes = normalized.dadosMes;
+  state.dadosMeta = normalized.dadosMeta;
+  state.anexos = normalized.anexos;
+  state.modoMes = normalized.modoMes;
+  state.modoMeta = normalized.modoMeta;
   initData();
 }
 
@@ -391,13 +516,27 @@ async function saveToCloud(silent = false) {
   clearTimeout(saveTimer);
   setSyncStatus('saving', `Salvando ${getPeriodoLabel()}...`, state.sync.dirty);
 
-  const payload = buildSnapshotPayload();
+  const localPayload = buildSnapshotPayload();
+  const basePayload = getSyncBasePayload();
+  const { data: remoteData, error: remoteError } = await supabaseClient
+    .from(SUPABASE_TABLE)
+    .select('payload')
+    .eq('ano', state.ano)
+    .eq('mes', state.mesIdx + 1)
+    .maybeSingle();
+
+  if (remoteError) {
+    setSyncStatus('error', 'Falha ao validar dados remotos antes de salvar', true);
+    return false;
+  }
+
+  const { payload: mergedPayload, conflicts } = mergeSnapshotPayloads(basePayload, remoteData?.payload, localPayload);
   const { error } = await supabaseClient
     .from(SUPABASE_TABLE)
     .upsert({
       ano: state.ano,
       mes: state.mesIdx + 1,
-      payload,
+      payload: mergedPayload,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'ano,mes' });
 
@@ -407,7 +546,31 @@ async function saveToCloud(silent = false) {
   }
 
   state.sync.lastSuccessAt = formatSyncTimestamp();
-  setSyncStatus('ready', `Salvo em nuvem: ${getPeriodoLabel()}`, false);
+  const livePayload = buildSnapshotPayload();
+  const liveChangedDuringSave = !areSnapshotValuesEqual(livePayload, localPayload);
+
+  if (liveChangedDuringSave) {
+    const { payload: reconciledPayload } = mergeSnapshotPayloads(localPayload, mergedPayload, livePayload);
+    applySnapshotPayload(reconciledPayload);
+    setSyncBasePayload(mergedPayload);
+    renderAll();
+    setSyncStatus('dirty', `Alterações locais em ${getPeriodoLabel()}`, true);
+    saveTimer = setTimeout(() => {
+      saveToCloud(true);
+    }, 400);
+    return true;
+  }
+
+  applySnapshotPayload(mergedPayload);
+  setSyncBasePayload(mergedPayload);
+  renderAll();
+  setSyncStatus(
+    'ready',
+    conflicts
+      ? `Salvo com mesclagem segura: ${getPeriodoLabel()}`
+      : `Salvo em nuvem: ${getPeriodoLabel()}`,
+    false
+  );
   if (!silent) scheduleSyncMessageReset();
   else scheduleSyncMessageReset();
   return true;
@@ -434,6 +597,7 @@ async function reloadFromCloud(silent = false) {
   if (!data || !data.payload) {
     resetStateData();
     initData();
+    setSyncBasePayload(null);
     renderAll();
     state.sync.lastSuccessAt = formatSyncTimestamp();
     setSyncStatus('ready', `Sem dados salvos para ${getPeriodoLabel()}`, false);
@@ -442,6 +606,7 @@ async function reloadFromCloud(silent = false) {
   }
 
   applySnapshotPayload(data.payload);
+  setSyncBasePayload(data.payload);
   renderAll();
   state.sync.lastSuccessAt = formatSyncTimestamp();
   setSyncStatus('ready', `Dados carregados: ${getPeriodoLabel()}`, false);
