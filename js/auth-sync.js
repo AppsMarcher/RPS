@@ -605,13 +605,17 @@ async function submitLogin(event) {
 
     try {
       if (isSignup) {
-        const { data, error } = await supabaseClient.auth.signUp({
-          email: emailNormalized,
-          password,
-          options: {
-            emailRedirectTo: APP_PUBLIC_URL,
-          },
-        });
+        const { data, error } = await withClientTimeout(
+          supabaseClient.auth.signUp({
+            email: emailNormalized,
+            password,
+            options: {
+              emailRedirectTo: APP_PUBLIC_URL,
+            },
+          }),
+          20000,
+          'O cadastro'
+        );
 
         if (error) {
           const rateLimitMessage = getAuthRateLimitMessage(error, 'confirmar este cadastro');
@@ -644,6 +648,10 @@ async function submitLogin(event) {
         return;
       }
     } catch (error) {
+      if (error?.code === 'client_timeout') {
+        setLoginMessage('O cadastro demorou demais para responder. Revise o SMTP do Supabase e tente novamente.', 'error');
+        return;
+      }
       setLoginMessage(error?.message || 'Falha inesperada durante a autenticação.', 'error');
     }
   } finally {

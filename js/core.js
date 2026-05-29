@@ -934,6 +934,23 @@ function getAuthRateLimitMessage(error, actionLabel = 'enviar um novo email') {
   return `Já existe uma solicitação recente para ${actionLabel}.${waitLabel}`;
 }
 
+function createClientTimeoutError(operationLabel, timeoutMs) {
+  const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+  const error = new Error(`${operationLabel} demorou mais de ${seconds}s para responder.`);
+  error.code = 'client_timeout';
+  error.timeoutMs = timeoutMs;
+  return error;
+}
+
+function withClientTimeout(promise, timeoutMs, operationLabel) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      window.setTimeout(() => reject(createClientTimeoutError(operationLabel, timeoutMs)), timeoutMs);
+    }),
+  ]);
+}
+
 function setLoginBusy(isBusy) {
   const submitBtn = document.getElementById('login-submit');
   const emailInput = document.getElementById('login-email');
@@ -1282,7 +1299,11 @@ async function requestPasswordReset() {
   try {
     const redirectTo = getPasswordResetRedirectUrl();
     const options = redirectTo ? { redirectTo } : undefined;
-    const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizeEmail(email), options);
+    const { error } = await withClientTimeout(
+      supabaseClient.auth.resetPasswordForEmail(normalizeEmail(email), options),
+      20000,
+      'A recuperação de senha'
+    );
     if (error) {
       const rateLimitMessage = getAuthRateLimitMessage(error, 'reenviar o email de recuperação');
       setLoginMessage(rateLimitMessage || error.message || 'Não foi possível enviar o email de recuperação.', 'error');
@@ -1290,6 +1311,10 @@ async function requestPasswordReset() {
     }
     setLoginMessage('Email de recuperação enviado. Abra o link para redefinir sua senha.', 'success');
   } catch (error) {
+    if (error?.code === 'client_timeout') {
+      setLoginMessage('O envio do email demorou demais para responder. Revise o SMTP do Supabase e tente novamente.', 'error');
+      return;
+    }
     setLoginMessage(error?.message || 'Falha inesperada ao solicitar recuperação de senha.', 'error');
   } finally {
     setLoginBusy(false);
