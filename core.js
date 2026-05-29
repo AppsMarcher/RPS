@@ -67,6 +67,7 @@ let state = {
     profile: null,
     users: [],
     mode: 'login',
+    pendingRequest: false,
   },
   sync: {
     enabled: false,
@@ -913,10 +914,31 @@ function setLoginMessage(message, type = '') {
   el.className = `login-message${type ? ` is-${type}` : ''}`;
 }
 
+function getAuthRateLimitMessage(error, actionLabel = 'enviar um novo email') {
+  const code = String(error?.code || '').toLowerCase();
+  const status = Number(error?.status || 0);
+  const message = String(error?.message || '');
+  const normalized = message.toLowerCase();
+  const isRateLimited =
+    code.includes('rate') ||
+    normalized.includes('rate limit') ||
+    normalized.includes('too many requests') ||
+    normalized.includes('security purposes') ||
+    normalized.includes('after') && normalized.includes('seconds') ||
+    status === 429;
+
+  if (!isRateLimited) return '';
+
+  const secondsMatch = normalized.match(/after\s+(\d+)\s+seconds?/i);
+  const waitLabel = secondsMatch ? ` Aguarde ${secondsMatch[1]}s e tente novamente.` : ' Aguarde alguns instantes e tente novamente.';
+  return `Já existe uma solicitação recente para ${actionLabel}.${waitLabel}`;
+}
+
 function setLoginBusy(isBusy) {
   const submitBtn = document.getElementById('login-submit');
   const emailInput = document.getElementById('login-email');
   const passwordInput = document.getElementById('login-password');
+  const confirmInput = document.getElementById('login-password-confirm');
   const isSignup = state.auth.mode === 'signup';
   if (submitBtn) {
     submitBtn.disabled = isBusy;
@@ -926,6 +948,7 @@ function setLoginBusy(isBusy) {
   }
   if (emailInput) emailInput.disabled = isBusy;
   if (passwordInput) passwordInput.disabled = isBusy;
+  if (confirmInput) confirmInput.disabled = isBusy;
 }
 
 function showEmailConfirmModal(email) {
@@ -1261,7 +1284,8 @@ async function requestPasswordReset() {
     const options = redirectTo ? { redirectTo } : undefined;
     const { error } = await supabaseClient.auth.resetPasswordForEmail(normalizeEmail(email), options);
     if (error) {
-      setLoginMessage(error.message || 'Não foi possível enviar o email de recuperação.', 'error');
+      const rateLimitMessage = getAuthRateLimitMessage(error, 'reenviar o email de recuperação');
+      setLoginMessage(rateLimitMessage || error.message || 'Não foi possível enviar o email de recuperação.', 'error');
       return;
     }
     setLoginMessage('Email de recuperação enviado. Abra o link para redefinir sua senha.', 'success');

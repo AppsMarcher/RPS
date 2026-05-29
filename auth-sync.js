@@ -532,113 +532,123 @@ async function submitLogin(event) {
     setLoginMessage('Supabase não configurado para autenticação.', 'error');
     return;
   }
+  if (state.auth.pendingRequest) return;
 
-  const email = document.getElementById('login-email')?.value.trim() || '';
-  const password = document.getElementById('login-password')?.value || '';
-  const emailNormalized = normalizeEmail(email);
-  const isSignup = state.auth.mode === 'signup';
-  const isRecovery = state.auth.mode === 'recovery';
-
-  if (isRecovery) {
-    const confirmPassword = document.getElementById('login-password-confirm')?.value || '';
-    if (!validatePassword(password)) {
-      setLoginMessage('A nova senha precisa ter pelo menos 6 caracteres.', 'error');
-      return;
-    }
-    if (password !== confirmPassword) {
-      setLoginMessage('A confirmação da senha não confere.', 'error');
-      return;
-    }
-
-    setLoginBusy(true);
-    setLoginMessage('Atualizando sua senha...');
-    try {
-      const { error } = await supabaseClient.auth.updateUser({ password });
-      if (error) {
-        setLoginMessage(error.message || 'Não foi possível atualizar sua senha.', 'error');
-        return;
-      }
-
-      state.auth.mode = 'login';
-      renderAuthMode();
-      authPostLogoutMessage = 'Senha redefinida com sucesso. Faça login com a nova senha.';
-      await supabaseClient.auth.signOut();
-    } catch (error) {
-      setLoginMessage(error?.message || 'Falha inesperada ao atualizar a senha.', 'error');
-    } finally {
-      setLoginBusy(false);
-    }
-    return;
-  }
-
-  if (!validateEmail(email)) {
-    setLoginMessage('Informe um email válido.', 'error');
-    return;
-  }
-
-  if (!validatePassword(password)) {
-    setLoginMessage('A senha precisa ter pelo menos 6 caracteres.', 'error');
-    return;
-  }
-
-  if (isSignup) {
-    const confirmPassword = document.getElementById('login-password-confirm')?.value || '';
-    if (password !== confirmPassword) {
-      setLoginMessage('A confirmação da senha não confere.', 'error');
-      return;
-    }
-
-    setLoginBusy(true);
-    setLoginMessage('Verificando autorização...');
-    const signupAllowed = await canStartFirstAccess(emailNormalized);
-    setLoginBusy(false);
-    if (!signupAllowed) {
-      setLoginMessage('Este email ainda não foi liberado pelo administrador.', 'error');
-      return;
-    }
-  }
-
-  setLoginBusy(true);
-  setLoginMessage(isSignup ? 'Criando seu acesso...' : 'Validando credenciais...');
+  state.auth.pendingRequest = true;
 
   try {
-    if (isSignup) {
-      const { data, error } = await supabaseClient.auth.signUp({
-        email: emailNormalized,
-        password,
-        options: {
-          emailRedirectTo: APP_PUBLIC_URL,
-        },
-      });
+    const email = document.getElementById('login-email')?.value.trim() || '';
+    const password = document.getElementById('login-password')?.value || '';
+    const emailNormalized = normalizeEmail(email);
+    const isSignup = state.auth.mode === 'signup';
+    const isRecovery = state.auth.mode === 'recovery';
 
-      if (error) {
-        setLoginMessage(error.message || 'Não foi possível criar seu acesso.', 'error');
+    if (isRecovery) {
+      const confirmPassword = document.getElementById('login-password-confirm')?.value || '';
+      if (!validatePassword(password)) {
+        setLoginMessage('A nova senha precisa ter pelo menos 6 caracteres.', 'error');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setLoginMessage('A confirmação da senha não confere.', 'error');
         return;
       }
 
-      state.auth.mode = 'login';
-      renderAuthMode();
-      setLoginMessage('');
+      setLoginBusy(true);
+      setLoginMessage('Atualizando sua senha...');
+      try {
+        const { error } = await supabaseClient.auth.updateUser({ password });
+        if (error) {
+          setLoginMessage(error.message || 'Não foi possível atualizar sua senha.', 'error');
+          return;
+        }
 
-      if (!data.session) {
-        // Supabase exige confirmação de email — mostra modal
-        showEmailConfirmModal(emailNormalized);
-      } else {
-        // Confirmação desativada no Supabase — já autenticado
-        setLoginMessage('Acesso criado com sucesso. Você já está autenticado.', 'success');
+        state.auth.mode = 'login';
+        renderAuthMode();
+        authPostLogoutMessage = 'Senha redefinida com sucesso. Faça login com a nova senha.';
+        await supabaseClient.auth.signOut();
+      } catch (error) {
+        setLoginMessage(error?.message || 'Falha inesperada ao atualizar a senha.', 'error');
+      } finally {
+        setLoginBusy(false);
       }
       return;
     }
 
-    const { error } = await supabaseClient.auth.signInWithPassword({ email: emailNormalized, password });
-    if (error) {
-      setLoginMessage(error.message || 'Email ou senha inválidos.', 'error');
+    if (!validateEmail(email)) {
+      setLoginMessage('Informe um email válido.', 'error');
       return;
     }
-  } catch (error) {
-    setLoginMessage(error?.message || 'Falha inesperada durante a autenticação.', 'error');
+
+    if (!validatePassword(password)) {
+      setLoginMessage('A senha precisa ter pelo menos 6 caracteres.', 'error');
+      return;
+    }
+
+      setLoginBusy(true);
+      if (isSignup) {
+      const confirmPassword = document.getElementById('login-password-confirm')?.value || '';
+      if (password !== confirmPassword) {
+        setLoginMessage('A confirmação da senha não confere.', 'error');
+        return;
+      }
+
+      setLoginMessage('Verificando autorização...');
+      const signupAllowed = await canStartFirstAccess(emailNormalized);
+      if (!signupAllowed) {
+        setLoginMessage('Este email ainda não foi liberado pelo administrador.', 'error');
+        return;
+      }
+    }
+
+    setLoginMessage(isSignup ? 'Criando seu acesso...' : 'Validando credenciais...');
+
+    try {
+      if (isSignup) {
+        const { data, error } = await supabaseClient.auth.signUp({
+          email: emailNormalized,
+          password,
+          options: {
+            emailRedirectTo: APP_PUBLIC_URL,
+          },
+        });
+
+        if (error) {
+          const rateLimitMessage = getAuthRateLimitMessage(error, 'confirmar este cadastro');
+          if (rateLimitMessage) {
+            setLoginMessage(rateLimitMessage, 'error');
+            showEmailConfirmModal(emailNormalized);
+            return;
+          }
+          setLoginMessage(error.message || 'Não foi possível criar seu acesso.', 'error');
+          return;
+        }
+
+        state.auth.mode = 'login';
+        renderAuthMode();
+        setLoginMessage('');
+
+        if (!data.session) {
+          // Supabase exige confirmação de email — mostra modal
+          showEmailConfirmModal(emailNormalized);
+        } else {
+          // Confirmação desativada no Supabase — já autenticado
+          setLoginMessage('Acesso criado com sucesso. Você já está autenticado.', 'success');
+        }
+        return;
+      }
+
+      const { error } = await supabaseClient.auth.signInWithPassword({ email: emailNormalized, password });
+      if (error) {
+        setLoginMessage(error.message || 'Email ou senha inválidos.', 'error');
+        return;
+      }
+    } catch (error) {
+      setLoginMessage(error?.message || 'Falha inesperada durante a autenticação.', 'error');
+    }
   } finally {
     setLoginBusy(false);
+    state.auth.pendingRequest = false;
   }
 }
 
