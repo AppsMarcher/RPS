@@ -265,41 +265,43 @@ function parseLocalizedNumber(raw) {
 }
 
 function syncVisibleInputsToState() {
-  const inputs = document.querySelectorAll('.cell-input[data-area-id][data-ind-id][data-col]');
+  const activeInput = document.activeElement;
   let changed = false;
 
-  inputs.forEach(input => {
-    const areaId = input.dataset.areaId;
-    const indId = input.dataset.indId;
-    const col = input.dataset.col;
-    const rawValue = input === document.activeElement ? input.value : input.value;
+  if (!(activeInput instanceof HTMLInputElement) || !activeInput.classList.contains('cell-input')) {
+    return changed;
+  }
 
-    if (!areaId || !indId || !col) return;
+  const areaId = activeInput.dataset.areaId;
+  const indId = activeInput.dataset.indId;
+  const col = activeInput.dataset.col;
+  const rawValue = activeInput.value;
 
-    if (col === 'mes') {
-      const storageKey = dadosMesK(areaId, indId);
-      if ((state.dadosMes[storageKey] || '') !== rawValue) {
-        state.dadosMes[storageKey] = rawValue;
-        changed = true;
-      }
-      return;
-    }
+  if (!areaId || !indId || !col) return changed;
 
-    if (col === 'meta') {
-      const storageKey = dadosMetaK(areaId, indId);
-      if ((state.dadosMeta[storageKey] || '') !== rawValue) {
-        state.dadosMeta[storageKey] = rawValue;
-        changed = true;
-      }
-      return;
-    }
-
-    const storageKey = key(areaId, indId, col);
-    if ((state.dados[storageKey] || '') !== rawValue) {
-      state.dados[storageKey] = rawValue;
+  if (col === 'mes') {
+    const storageKey = dadosMesK(areaId, indId);
+    if ((state.dadosMes[storageKey] || '') !== rawValue) {
+      state.dadosMes[storageKey] = rawValue;
       changed = true;
     }
-  });
+    return changed;
+  }
+
+  if (col === 'meta') {
+    const storageKey = dadosMetaK(areaId, indId);
+    if ((state.dadosMeta[storageKey] || '') !== rawValue) {
+      state.dadosMeta[storageKey] = rawValue;
+      changed = true;
+    }
+    return changed;
+  }
+
+  const storageKey = key(areaId, indId, col);
+  if ((state.dados[storageKey] || '') !== rawValue) {
+    state.dados[storageKey] = rawValue;
+    changed = true;
+  }
 
   return changed;
 }
