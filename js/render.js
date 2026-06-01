@@ -651,7 +651,7 @@ function renderPresentBody() {
         spacerRow.className = 'indicator-row spacer-row';
         const spacerTd = document.createElement('td');
         spacerTd.colSpan = state.semanas.length + 5;
-        spacerTd.innerHTML = '&nbsp;';
+        spacerTd.innerHTML = '<div class="present-spacer-fill" aria-hidden="true"></div>';
         spacerRow.appendChild(spacerTd);
         tbody.appendChild(spacerRow);
         return;
