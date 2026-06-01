@@ -678,6 +678,9 @@ function openLightbox(ak, lbl) {
   lbLabel = lbl;
   lbImageIdx = 0;
   lbZoom = 1;
+  lbPanX = 0;
+  lbPanY = 0;
+  lbPanActive = false;
   syncLightboxHost();
   document.getElementById('lb-label').textContent = lbl;
   renderLightbox();
@@ -690,6 +693,9 @@ function closeLightbox() {
   lbLabel = '';
   lbImageIdx = 0;
   lbZoom = 1;
+  lbPanX = 0;
+  lbPanY = 0;
+  lbPanActive = false;
   syncLightboxHost();
 }
 
@@ -733,17 +739,97 @@ function lightboxNav(delta) {
   if (!imgs.length) return;
   lbImageIdx = (lbImageIdx + delta + imgs.length) % imgs.length;
   lbZoom = 1;
+  lbPanX = 0;
+  lbPanY = 0;
   renderLightbox();
 }
 
 function resetLightboxZoom() {
   lbZoom = 1;
+  lbPanX = 0;
+  lbPanY = 0;
   renderLightbox();
 }
 
 function lightboxZoom(delta) {
   lbZoom = Math.max(0.6, Math.min(4, Number((lbZoom + delta).toFixed(2))));
   renderLightbox();
+}
+
+function getLightboxImagePanBounds(img) {
+  const wrap = img?.closest('.attach-stage-image-wrap');
+  if (!wrap || !img?.naturalWidth || !img?.naturalHeight) {
+    return { maxX: 0, maxY: 0 };
+  }
+
+  const containerWidth = wrap.clientWidth;
+  const containerHeight = wrap.clientHeight;
+  if (!containerWidth || !containerHeight) {
+    return { maxX: 0, maxY: 0 };
+  }
+
+  const fitScale = Math.min(containerWidth / img.naturalWidth, containerHeight / img.naturalHeight, 1);
+  const baseWidth = img.naturalWidth * fitScale;
+  const baseHeight = img.naturalHeight * fitScale;
+  const scaledWidth = baseWidth * lbZoom;
+  const scaledHeight = baseHeight * lbZoom;
+
+  return {
+    maxX: Math.max(0, (scaledWidth - containerWidth) / 2),
+    maxY: Math.max(0, (scaledHeight - containerHeight) / 2),
+  };
+}
+
+function clampLightboxPan(img) {
+  const { maxX, maxY } = getLightboxImagePanBounds(img);
+  lbPanX = Math.max(-maxX, Math.min(maxX, lbPanX));
+  lbPanY = Math.max(-maxY, Math.min(maxY, lbPanY));
+}
+
+function applyLightboxImageTransform(img) {
+  if (!img) return;
+  clampLightboxPan(img);
+  img.style.transform = `translate(${lbPanX}px, ${lbPanY}px) scale(${lbZoom})`;
+  const wrap = img.closest('.attach-stage-image-wrap');
+  if (wrap) {
+    wrap.classList.toggle('is-pannable', lbZoom > 1);
+    wrap.classList.toggle('is-panning', lbPanActive && lbZoom > 1);
+  }
+}
+
+function initializeLightboxImagePan(img) {
+  if (!img) return;
+  applyLightboxImageTransform(img);
+}
+
+function startLightboxPan(event) {
+  const wrap = event.currentTarget;
+  const img = wrap.querySelector('img');
+  if (!img || lbZoom <= 1) return;
+
+  event.preventDefault();
+  lbPanActive = true;
+  lbPanStartX = event.clientX;
+  lbPanStartY = event.clientY;
+  lbPanOriginX = lbPanX;
+  lbPanOriginY = lbPanY;
+  wrap.classList.add('is-panning');
+}
+
+function stopLightboxPan() {
+  lbPanActive = false;
+  const wrap = document.querySelector('.attach-stage-image-wrap.is-panning');
+  wrap?.classList.remove('is-panning');
+}
+
+function syncLightboxPanPointer(event) {
+  if (!lbPanActive) return;
+  const img = document.querySelector('.attach-stage-image-wrap img');
+  if (!img) return;
+
+  lbPanX = lbPanOriginX + (event.clientX - lbPanStartX);
+  lbPanY = lbPanOriginY + (event.clientY - lbPanStartY);
+  applyLightboxImageTransform(img);
 }
 
 function renderLightbox() {
@@ -758,8 +844,8 @@ function renderLightbox() {
     const current = imgs[Math.min(lbImageIdx, imgs.length - 1)];
     preview.innerHTML = `<div class="attach-stage">
       <div class="attach-stage-main">
-        <div class="attach-stage-image-wrap">
-          <img src="${current.url}" alt="${current.name}" style="transform:scale(${lbZoom})">
+        <div class="attach-stage-image-wrap" onmousedown="startLightboxPan(event)">
+          <img src="${current.url}" alt="${current.name}" onload="initializeLightboxImagePan(this)">
         </div>
       </div>
       <div class="attach-stage-bar">
@@ -861,6 +947,14 @@ document.addEventListener('mouseup', () => {
   document.querySelectorAll('.resize-handle.active').forEach(el => el.classList.remove('active'));
   saveColumnWidths();
   resizeState = null;
+});
+
+document.addEventListener('mousemove', event => {
+  syncLightboxPanPointer(event);
+});
+
+document.addEventListener('mouseup', () => {
+  stopLightboxPan();
 });
 
 
