@@ -617,6 +617,7 @@ function renderPresentBody() {
       state.semanas.forEach((s, si) => {
         const td = document.createElement('td');
         if (state.presentIdx === si) td.className = 'focused-col';
+        applyCellCommentState(td, comentarioK(area.id, ind.id, s));
         const ak = anexoKey(area.id, ind.id, s);
         const countAtt = getAttachmentCount(ak);
         const hasAtt = countAtt > 0;
@@ -654,11 +655,13 @@ function renderPresentBody() {
 
       const tdMes = document.createElement('td');
       tdMes.className = 'mes-cell';
+      applyCellCommentState(tdMes, comentarioK(area.id, ind.id, 'mes'));
       tdMes.innerHTML = `<div class="present-cell-wrap"><span class="present-cell-val">${formatNum(valMes, unit)}</span></div>`;
       row.appendChild(tdMes);
 
       const tdMeta = document.createElement('td');
       tdMeta.className = 'meta-cell';
+      applyCellCommentState(tdMeta, comentarioK(area.id, ind.id, 'meta'));
       tdMeta.innerHTML = `<div class="present-cell-wrap"><span class="present-cell-val p-meta-val">${formatNum(valMeta, unit)}</span></div>`;
       row.appendChild(tdMeta);
 
