@@ -18,6 +18,10 @@ const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
 const reminderFromEmail = Deno.env.get("REMINDER_FROM_EMAIL") ?? "";
 const reminderCronSecret = Deno.env.get("REMINDER_CRON_SECRET") ?? "";
 const appBaseUrl = Deno.env.get("APP_BASE_URL") ?? "";
+const reminderScheduleToleranceMinutes = Math.max(
+  1,
+  Number(Deno.env.get("REMINDER_SCHEDULE_TOLERANCE_MINUTES") ?? "5") || 5,
+);
 
 const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
   auth: { persistSession: false },
@@ -84,6 +88,10 @@ function getWeekOfMonth(day: number) {
   return Math.ceil(day / 7);
 }
 
+function minutesOfDay(parts: ReturnType<typeof getLocalDateParts>) {
+  return (parts.hour * 60) + parts.minute;
+}
+
 function formatMonthName(monthIndex: number) {
   return [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -101,22 +109,50 @@ function renderTemplate(template: string, variables: Record<string, string>) {
 function isScheduleDue(settings: ReturnType<typeof normalizeReminderSettings>, now = new Date()) {
   const local = getLocalDateParts(now, settings.timezone);
   const [hour, minute] = settings.time_hhmm.split(":").map(Number);
+  const targetMinutes = (hour * 60) + minute;
+  const currentMinutes = minutesOfDay(local);
 
-  if (local.hour !== hour || local.minute !== minute) return false;
+  if (currentMinutes < targetMinutes || currentMinutes >= targetMinutes + reminderScheduleToleranceMinutes) {
+    return false;
+  }
   if (settings.recurrence === "daily") return true;
   if (settings.recurrence === "monthly") return local.day === settings.weekday;
   return local.weekday === settings.weekday;
 }
 
-function alreadySentForThisMinute(lastSentAt: unknown, timezone: string, now = new Date()) {
+function alreadySentForCurrentWindow(
+  lastSentAt: unknown,
+  settings: ReturnType<typeof normalizeReminderSettings>,
+  now = new Date(),
+) {
   if (!lastSentAt) return false;
-  const current = getLocalDateParts(now, timezone);
-  const previous = getLocalDateParts(new Date(String(lastSentAt)), timezone);
+  const current = getLocalDateParts(now, settings.timezone);
+  const previous = getLocalDateParts(new Date(String(lastSentAt)), settings.timezone);
+  const [hour, minute] = settings.time_hhmm.split(":").map(Number);
+  const targetMinutes = (hour * 60) + minute;
+  const previousMinutes = minutesOfDay(previous);
+
+  const sameWindowDate = current.year === previous.year &&
+    current.month === previous.month &&
+    current.day === previous.day;
+
+  if (!sameWindowDate) return false;
+
+  if (previousMinutes < targetMinutes || previousMinutes >= targetMinutes + reminderScheduleToleranceMinutes) {
+    return false;
+  }
+
+  if (settings.recurrence === "monthly") {
+    return current.day === settings.weekday;
+  }
+
+  if (settings.recurrence === "weekly") {
+    return current.weekday === settings.weekday;
+  }
+
   return current.year === previous.year &&
     current.month === previous.month &&
-    current.day === previous.day &&
-    current.hour === previous.hour &&
-    current.minute === previous.minute;
+    current.day === previous.day;
 }
 
 function jsonResponse(request: Request, body: Record<string, unknown>, status = 200) {
@@ -157,6 +193,7 @@ async function sendEmailWithRetry(payload: Record<string, unknown>, toEmail: str
 async function ensureAuthorized(request: Request, trigger: string) {
   if (trigger === "scheduled") {
     const secret = request.headers.get("x-reminder-secret") || "";
+    if (!reminderCronSecret) return false;
     return secret && secret === reminderCronSecret;
   }
 
@@ -222,10 +259,18 @@ Deno.serve(async request => {
         return jsonResponse(request, { skipped: true, reason: "Lembrete pausado." }, 200);
       }
       if (!isScheduleDue(settings)) {
-        return jsonResponse(request, { skipped: true, reason: "Fora da janela configurada." }, 200);
+        return jsonResponse(request, {
+          skipped: true,
+          reason: "Fora da janela configurada.",
+          toleranceMinutes: reminderScheduleToleranceMinutes,
+        }, 200);
       }
-      if (alreadySentForThisMinute(settings.last_sent_at, settings.timezone)) {
-        return jsonResponse(request, { skipped: true, reason: "Lembrete jÃ¡ enviado nesta janela." }, 200);
+      if (alreadySentForCurrentWindow(settings.last_sent_at, settings)) {
+        return jsonResponse(request, {
+          skipped: true,
+          reason: "Lembrete jÃ¡ enviado nesta janela.",
+          toleranceMinutes: reminderScheduleToleranceMinutes,
+        }, 200);
       }
     }
 
