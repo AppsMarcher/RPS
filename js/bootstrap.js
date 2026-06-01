@@ -7,6 +7,11 @@
   if (presentOverlay) {
     presentOverlay.addEventListener('mousemove', updatePresentLaserPosition);
     presentOverlay.addEventListener('mouseleave', hidePresentLaser);
+    presentOverlay.addEventListener('click', event => {
+      if (!event.target.closest('.present-comment-popover') && !event.target.closest('.present-comment-cell')) {
+        hidePresentCommentPopover();
+      }
+    });
   }
   const loginForm = document.getElementById('login-form');
   if (loginForm) {

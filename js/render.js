@@ -483,6 +483,55 @@ function updatePresentationToolbar() {
   }
 }
 
+function hidePresentCommentPopover() {
+  const popover = document.getElementById('present-comment-popover');
+  if (!popover) return;
+  popover.classList.remove('open');
+  popover.setAttribute('aria-hidden', 'true');
+}
+
+function showPresentCommentPopover(target, comment) {
+  const popover = document.getElementById('present-comment-popover');
+  const body = document.getElementById('present-comment-body');
+  const overlay = document.getElementById('present-overlay');
+  if (!popover || !body || !overlay || !comment) return;
+
+  body.textContent = comment;
+  popover.classList.add('open');
+  popover.setAttribute('aria-hidden', 'false');
+
+  const targetRect = target.getBoundingClientRect();
+  const overlayRect = overlay.getBoundingClientRect();
+  const popRect = popover.getBoundingClientRect();
+  const margin = 12;
+
+  let left = targetRect.right + margin;
+  let top = targetRect.top;
+
+  if (left + popRect.width > overlayRect.right - margin) {
+    left = Math.max(overlayRect.left + margin, targetRect.left - popRect.width - margin);
+  }
+  if (top + popRect.height > overlayRect.bottom - margin) {
+    top = Math.max(overlayRect.top + margin, overlayRect.bottom - popRect.height - margin);
+  }
+
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+}
+
+function bindPresentCommentPopover(td, commentKey) {
+  const comment = getCellComment(commentKey).trim();
+  if (!comment || !td) return;
+
+  td.classList.add('present-comment-cell');
+  td.onmouseenter = () => showPresentCommentPopover(td, comment);
+  td.onmouseleave = () => hidePresentCommentPopover();
+  td.onclick = event => {
+    event.stopPropagation();
+    showPresentCommentPopover(td, comment);
+  };
+}
+
 function togglePresentDarkMode() {
   state.presentation.darkMode = !state.presentation.darkMode;
   savePresentationPreferences();
@@ -509,6 +558,7 @@ function openPresent() {
 
 function closePresent() {
   document.getElementById('present-overlay').classList.remove('open');
+  hidePresentCommentPopover();
   syncLightboxHost();
   const laser = document.getElementById('present-laser');
   if (laser) laser.style.opacity = '0';
@@ -517,6 +567,7 @@ function closePresent() {
 }
 
 function setPresentWeek(i) {
+  hidePresentCommentPopover();
   state.presentIdx = i;
   renderPresentBody();
   updatePresentNav();
@@ -524,6 +575,7 @@ function setPresentWeek(i) {
 
 function presentNav(d) {
   const max = state.semanas.length - 1;
+  hidePresentCommentPopover();
   state.presentIdx = Math.max(0, Math.min(max, state.presentIdx + d));
   renderPresentBody();
   updatePresentNav();
@@ -617,7 +669,9 @@ function renderPresentBody() {
       state.semanas.forEach((s, si) => {
         const td = document.createElement('td');
         if (state.presentIdx === si) td.className = 'focused-col';
-        applyCellCommentState(td, comentarioK(area.id, ind.id, s));
+        const weekCommentKey = comentarioK(area.id, ind.id, s);
+        applyCellCommentState(td, weekCommentKey);
+        bindPresentCommentPopover(td, weekCommentKey);
         const ak = anexoKey(area.id, ind.id, s);
         const countAtt = getAttachmentCount(ak);
         const hasAtt = countAtt > 0;
@@ -655,13 +709,17 @@ function renderPresentBody() {
 
       const tdMes = document.createElement('td');
       tdMes.className = 'mes-cell';
-      applyCellCommentState(tdMes, comentarioK(area.id, ind.id, 'mes'));
+      const mesCommentKey = comentarioK(area.id, ind.id, 'mes');
+      applyCellCommentState(tdMes, mesCommentKey);
+      bindPresentCommentPopover(tdMes, mesCommentKey);
       tdMes.innerHTML = `<div class="present-cell-wrap"><span class="present-cell-val">${formatNum(valMes, unit)}</span></div>`;
       row.appendChild(tdMes);
 
       const tdMeta = document.createElement('td');
       tdMeta.className = 'meta-cell';
-      applyCellCommentState(tdMeta, comentarioK(area.id, ind.id, 'meta'));
+      const metaCommentKey = comentarioK(area.id, ind.id, 'meta');
+      applyCellCommentState(tdMeta, metaCommentKey);
+      bindPresentCommentPopover(tdMeta, metaCommentKey);
       tdMeta.innerHTML = `<div class="present-cell-wrap"><span class="present-cell-val p-meta-val">${formatNum(valMeta, unit)}</span></div>`;
       row.appendChild(tdMeta);
 
