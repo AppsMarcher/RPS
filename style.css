@@ -1080,6 +1080,13 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
 .present-app .indicator-row td:first-child {
   font-size: 13px;
 }
+.present-app .spacer-row td {
+  position: relative;
+  height: 14px;
+  min-height: 14px;
+  padding: 0;
+  background: #fff;
+}
 .present-cell-wrap {
   display: flex;
   align-items: center;
