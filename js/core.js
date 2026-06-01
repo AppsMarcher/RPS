@@ -247,8 +247,9 @@ function parseLocalizedNumber(raw) {
   } else if (normalized.includes(',')) {
     normalized = normalized.replace(',', '.');
   } else {
-    const dotMatches = normalized.match(/\./g) || [];
-    if (dotMatches.length > 1) {
+    const dotGroups = normalized.split('.');
+    const hasThousandsGrouping = dotGroups.length > 1 && dotGroups.slice(1).every(group => /^\d{3}$/.test(group));
+    if (hasThousandsGrouping) {
       normalized = normalized.replace(/\./g, '');
     }
   }
