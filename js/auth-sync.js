@@ -219,6 +219,106 @@ function resolveMergedEntry(baseEntry, remoteEntry, localEntry, mergeMeta) {
   return localEntry;
 }
 
+function getEntityId(entity) {
+  if (!entity || typeof entity !== 'object') return '';
+  return String(entity.id || '');
+}
+
+function resolveMergedEntityEntry(baseEntry, remoteEntry, localEntry, mergeMeta) {
+  const localChanged = !areSnapshotEntriesEqual(localEntry, baseEntry);
+  const remoteChanged = !areSnapshotEntriesEqual(remoteEntry, baseEntry);
+
+  if (localChanged && !remoteChanged) return localEntry;
+  if (!localChanged && remoteChanged) return remoteEntry;
+  if (!localChanged && !remoteChanged) return remoteEntry;
+  if (areSnapshotEntriesEqual(localEntry, remoteEntry)) return localEntry;
+
+  mergeMeta.conflicts += 1;
+
+  if (localEntry.exists && !remoteEntry.exists) return localEntry;
+  if (!localEntry.exists && remoteEntry.exists) return remoteEntry;
+  return localEntry;
+}
+
+function mergeOrderedEntityLists(baseList, remoteList, localList, mergeMeta, normalizer = value => value) {
+  const baseItems = Array.isArray(baseList) ? baseList.map((item, idx) => normalizer(item, idx)) : [];
+  const remoteItems = Array.isArray(remoteList) ? remoteList.map((item, idx) => normalizer(item, idx)) : [];
+  const localItems = Array.isArray(localList) ? localList.map((item, idx) => normalizer(item, idx)) : [];
+
+  const baseMap = new Map(baseItems.map(item => [getEntityId(item), item]));
+  const remoteMap = new Map(remoteItems.map(item => [getEntityId(item), item]));
+  const localMap = new Map(localItems.map(item => [getEntityId(item), item]));
+  const baseObject = Object.fromEntries(baseMap);
+  const remoteObject = Object.fromEntries(remoteMap);
+  const localObject = Object.fromEntries(localMap);
+  const mergedMap = new Map();
+
+  const ids = new Set([
+    ...baseItems.map(getEntityId),
+    ...remoteItems.map(getEntityId),
+    ...localItems.map(getEntityId),
+  ]);
+
+  ids.forEach(id => {
+    if (!id) return;
+    const baseEntry = getSnapshotEntry(baseObject, id);
+    const remoteEntry = getSnapshotEntry(remoteObject, id);
+    const localEntry = getSnapshotEntry(localObject, id);
+    const chosen = resolveMergedEntityEntry(baseEntry, remoteEntry, localEntry, mergeMeta);
+    if (chosen.exists) {
+      mergedMap.set(id, cloneSnapshotValue(chosen.value));
+    }
+  });
+
+  const result = [];
+  const seen = new Set();
+  const appendFrom = items => {
+    items.forEach(item => {
+      const id = getEntityId(item);
+      if (!id || seen.has(id) || !mergedMap.has(id)) return;
+      result.push(cloneSnapshotValue(mergedMap.get(id)));
+      seen.add(id);
+    });
+  };
+
+  appendFrom(localItems);
+  appendFrom(remoteItems);
+  appendFrom(baseItems);
+
+  return result;
+}
+
+function mergeSnapshotAreasSection(baseAreas, remoteAreas, localAreas, mergeMeta) {
+  return mergeOrderedEntityLists(baseAreas, remoteAreas, localAreas, mergeMeta);
+}
+
+function mergeSnapshotIndicadoresSection(baseSection, remoteSection, localSection, mergeMeta) {
+  const base = baseSection || {};
+  const remote = remoteSection || {};
+  const local = localSection || {};
+  const result = {};
+  const areaIds = new Set([
+    ...Object.keys(base),
+    ...Object.keys(remote),
+    ...Object.keys(local),
+  ]);
+
+  areaIds.forEach(areaId => {
+    const mergedList = mergeOrderedEntityLists(
+      base[areaId],
+      remote[areaId],
+      local[areaId],
+      mergeMeta,
+      normalizeIndicator
+    );
+    if (mergedList.length) {
+      result[areaId] = mergedList;
+    }
+  });
+
+  return result;
+}
+
 function mergeSnapshotMapSection(baseSection, remoteSection, localSection, mergeMeta) {
   const base = baseSection || {};
   const remote = remoteSection || {};
@@ -267,8 +367,8 @@ function mergeSnapshotPayloads(basePayload, remotePayload, localPayload) {
   return {
     payload: {
       version: Math.max(base.version || 2, remote.version || 2, local.version || 2, 2),
-      areas: mergeSnapshotWholeSection(base.areas, remote.areas, local.areas, mergeMeta),
-      indicadores: mergeSnapshotMapSection(base.indicadores, remote.indicadores, local.indicadores, mergeMeta),
+      areas: mergeSnapshotAreasSection(base.areas, remote.areas, local.areas, mergeMeta),
+      indicadores: mergeSnapshotIndicadoresSection(base.indicadores, remote.indicadores, local.indicadores, mergeMeta),
       unidades: mergeSnapshotMapSection(base.unidades, remote.unidades, local.unidades, mergeMeta),
       dados: mergeSnapshotMapSection(base.dados, remote.dados, local.dados, mergeMeta),
       cellStyles: mergeSnapshotMapSection(base.cellStyles, remote.cellStyles, local.cellStyles, mergeMeta),
@@ -281,6 +381,76 @@ function mergeSnapshotPayloads(basePayload, remotePayload, localPayload) {
     },
     conflicts: mergeMeta.conflicts,
   };
+}
+
+async function writeSnapshotWithRetry(localPayload, silent = false) {
+  const basePayload = getSyncBasePayload();
+  let lastError = null;
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data: remoteData, error: remoteError } = await supabaseClient
+      .from(SUPABASE_TABLE)
+      .select('payload, updated_at')
+      .eq('ano', state.ano)
+      .eq('mes', state.mesIdx + 1)
+      .maybeSingle();
+
+    if (remoteError) {
+      return { ok: false, errorMessage: 'Falha ao validar dados remotos antes de salvar' };
+    }
+
+    const { payload: mergedPayload, conflicts } = mergeSnapshotPayloads(basePayload, remoteData?.payload, localPayload);
+    const saveRow = {
+      ano: state.ano,
+      mes: state.mesIdx + 1,
+      payload: mergedPayload,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (!remoteData) {
+      const { error: insertError } = await supabaseClient
+        .from(SUPABASE_TABLE)
+        .insert(saveRow);
+
+      if (!insertError) {
+        return { ok: true, payload: mergedPayload, conflicts };
+      }
+
+      lastError = insertError;
+      if (String(insertError.code || '') === '23505') {
+        continue;
+      }
+      return { ok: false, errorMessage: 'Falha ao salvar no Supabase' };
+    }
+
+    const updateQuery = supabaseClient
+      .from(SUPABASE_TABLE)
+      .update(saveRow)
+      .eq('ano', state.ano)
+      .eq('mes', state.mesIdx + 1);
+
+    const guardedQuery = remoteData.updated_at
+      ? updateQuery.eq('updated_at', remoteData.updated_at)
+      : updateQuery.is('updated_at', null);
+
+    const { data: updatedRows, error: updateError } = await guardedQuery
+      .select('updated_at')
+      .limit(1);
+
+    if (updateError) {
+      lastError = updateError;
+      return { ok: false, errorMessage: 'Falha ao salvar no Supabase' };
+    }
+
+    if (Array.isArray(updatedRows) && updatedRows.length) {
+      return { ok: true, payload: mergedPayload, conflicts };
+    }
+  }
+
+  if (!silent) {
+    console.warn('Falha de concorrência ao salvar snapshot após múltiplas tentativas.', lastError);
+  }
+  return { ok: false, errorMessage: 'Não foi possível concluir o salvamento concorrente com segurança' };
 }
 
 function resetForSignedOut() {
@@ -591,34 +761,15 @@ async function saveToCloud(silent = false) {
 
   const localPayload = buildSnapshotPayload();
   persistLocalDraft(localPayload);
-  const basePayload = getSyncBasePayload();
-  const { data: remoteData, error: remoteError } = await supabaseClient
-    .from(SUPABASE_TABLE)
-    .select('payload')
-    .eq('ano', state.ano)
-    .eq('mes', state.mesIdx + 1)
-    .maybeSingle();
+  const saveResult = await writeSnapshotWithRetry(localPayload, silent);
 
-  if (remoteError) {
-    setSyncStatus('error', 'Falha ao validar dados remotos antes de salvar', true);
+  if (!saveResult.ok) {
+    setSyncStatus('error', saveResult.errorMessage, true);
     return false;
   }
 
-  const { payload: mergedPayload, conflicts } = mergeSnapshotPayloads(basePayload, remoteData?.payload, localPayload);
-  const { error } = await supabaseClient
-    .from(SUPABASE_TABLE)
-    .upsert({
-      ano: state.ano,
-      mes: state.mesIdx + 1,
-      payload: mergedPayload,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'ano,mes' });
-
-  if (error) {
-    setSyncStatus('error', 'Falha ao salvar no Supabase', true);
-    return false;
-  }
-
+  const mergedPayload = saveResult.payload;
+  const conflicts = saveResult.conflicts;
   state.sync.lastSuccessAt = formatSyncTimestamp();
   const livePayload = buildSnapshotPayload();
   const liveChangedDuringSave = !areSnapshotValuesEqual(livePayload, localPayload);
