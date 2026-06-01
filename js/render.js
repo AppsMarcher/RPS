@@ -687,15 +687,12 @@ function renderPresentBody() {
           clipBtn.className = 'present-clip-btn';
           clipBtn.type = 'button';
           clipBtn.onclick = () => openLightbox(ak, `${ind.label} - ${s}`);
+          clipBtn.title = `${countAtt} anexo(s)`;
 
           const clipIcon = document.createElement('i');
           clipIcon.className = 'ti ti-paperclip';
-          const countSpan = document.createElement('span');
-          countSpan.className = 'present-count';
-          countSpan.textContent = String(countAtt);
 
           clipBtn.appendChild(clipIcon);
-          clipBtn.appendChild(countSpan);
           wrap.appendChild(clipBtn);
         }
         td.appendChild(wrap);
