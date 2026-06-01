@@ -572,7 +572,7 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
 .attach-stage-main {
   height: min(72vh, 760px);
   display: flex; align-items: center; justify-content: center;
-  overflow: auto;
+  overflow: hidden;
   border-radius: 18px;
   background: linear-gradient(180deg, #ffffff, #f2f7fb);
   border: 1px solid rgba(24,95,165,0.08);
@@ -585,6 +585,12 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   justify-content: center;
   padding: 20px;
 }
+.attach-stage-image-wrap.is-pannable {
+  cursor: grab;
+}
+.attach-stage-image-wrap.is-panning {
+  cursor: grabbing;
+}
 .attach-stage-main img {
   max-width: 100%;
   max-height: 100%;
@@ -595,6 +601,9 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   background: #fff;
   transform-origin: center center;
   transition: transform 0.18s ease;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
 }
 .attach-stage-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
