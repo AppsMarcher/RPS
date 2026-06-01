@@ -221,6 +221,46 @@ function getColumnKeys() {
   return ['area', ...state.semanas, 'mes', 'meta', 'vardiff', 'var'];
 }
 
+function syncVisibleInputsToState() {
+  const inputs = document.querySelectorAll('.cell-input[data-area-id][data-ind-id][data-col]');
+  let changed = false;
+
+  inputs.forEach(input => {
+    const areaId = input.dataset.areaId;
+    const indId = input.dataset.indId;
+    const col = input.dataset.col;
+    const rawValue = input === document.activeElement ? input.value : input.value;
+
+    if (!areaId || !indId || !col) return;
+
+    if (col === 'mes') {
+      const storageKey = dadosMesK(areaId, indId);
+      if ((state.dadosMes[storageKey] || '') !== rawValue) {
+        state.dadosMes[storageKey] = rawValue;
+        changed = true;
+      }
+      return;
+    }
+
+    if (col === 'meta') {
+      const storageKey = dadosMetaK(areaId, indId);
+      if ((state.dadosMeta[storageKey] || '') !== rawValue) {
+        state.dadosMeta[storageKey] = rawValue;
+        changed = true;
+      }
+      return;
+    }
+
+    const storageKey = key(areaId, indId, col);
+    if ((state.dados[storageKey] || '') !== rawValue) {
+      state.dados[storageKey] = rawValue;
+      changed = true;
+    }
+  });
+
+  return changed;
+}
+
 function ensureColumnWidths() {
   getColumnKeys().forEach(colKey => {
     if (!state.columnWidths[colKey]) {
@@ -1046,6 +1086,8 @@ function renderAuthHeader() {
   const adminBtn = document.getElementById('admin-btn');
   const addAreaBtn = document.getElementById('add-area-btn');
   const copyMonthConfigBtn = document.getElementById('copy-month-config-btn');
+  const saveBtn = document.getElementById('save-btn');
+  const reloadBtn = document.getElementById('reload-btn');
   const headerSub = document.getElementById('header-sub');
   if (!userBadge) return;
   const email = state.auth.user?.email || '';
@@ -1066,6 +1108,12 @@ function renderAuthHeader() {
   }
   if (copyMonthConfigBtn) {
     copyMonthConfigBtn.classList.toggle('hidden', !canEditStructure());
+  }
+  if (saveBtn) {
+    saveBtn.classList.toggle('hidden', !canEditData());
+  }
+  if (reloadBtn) {
+    reloadBtn.classList.toggle('hidden', !state.auth.profile);
   }
 }
 

@@ -800,6 +800,9 @@ function addArea() {
 }
 
 async function changeMonth(d) {
+  if (syncVisibleInputsToState()) {
+    state.sync.dirty = true;
+  }
   if (state.sync.enabled && state.sync.dirty) {
     await saveToCloud(true);
   }

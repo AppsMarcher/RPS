@@ -186,6 +186,10 @@ function recoverLocalDraftIfNeeded(remotePayload) {
 }
 
 function flushPendingChanges() {
+  const visibleInputChanged = syncVisibleInputsToState();
+  if (visibleInputChanged) {
+    state.sync.dirty = true;
+  }
   if (!state.sync.enabled || !state.sync.dirty) return;
   persistLocalDraft(buildSnapshotPayload());
   saveToCloud(true);
@@ -463,6 +467,7 @@ function resetForSignedOut() {
 }
 
 function buildSnapshotPayload() {
+  syncVisibleInputsToState();
   const serializedAttachments = Object.fromEntries(
     Object.entries(state.anexos).map(([cellKey, items]) => [
       cellKey,
@@ -847,6 +852,24 @@ async function reloadFromCloud(silent = false) {
   setSyncStatus('ready', `Dados carregados: ${getPeriodoLabel()}`, false);
   if (!silent) scheduleSyncMessageReset();
   return true;
+}
+
+async function manualSaveSnapshot() {
+  if (!state.sync.enabled || !canEditData()) return false;
+  const visibleInputChanged = syncVisibleInputsToState();
+  if (visibleInputChanged) {
+    state.sync.dirty = true;
+  }
+  return saveToCloud(false);
+}
+
+async function manualReloadSnapshot() {
+  if (!state.sync.enabled) return false;
+  if (state.sync.dirty) {
+    const shouldDiscard = confirm(`Existem alterações locais em ${getPeriodoLabel()} ainda não sincronizadas.\n\nDeseja recarregar do banco mesmo assim?`);
+    if (!shouldDiscard) return false;
+  }
+  return reloadFromCloud(false);
 }
 
 async function applyAuthSession(session) {
