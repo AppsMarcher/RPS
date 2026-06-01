@@ -221,6 +221,41 @@ function getColumnKeys() {
   return ['area', ...state.semanas, 'mes', 'meta', 'vardiff', 'var'];
 }
 
+function parseLocalizedNumber(raw) {
+  if (raw === null || raw === undefined || raw === '') return NaN;
+  if (typeof raw === 'number') return raw;
+
+  const text = String(raw).trim();
+  if (!text) return NaN;
+
+  const timeMatch = text.match(/^(-?)(\d+):(\d{1,2})$/);
+  if (timeMatch) {
+    const sign = timeMatch[1] === '-' ? -1 : 1;
+    const hours = Number(timeMatch[2]);
+    const minutes = Number(timeMatch[3]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return NaN;
+    return sign * (hours + (minutes / 60));
+  }
+
+  let normalized = text
+    .replace(/\s+/g, '')
+    .replace(/^R\$/, '')
+    .replace(/%$/, '');
+
+  if (normalized.includes(',') && normalized.includes('.')) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (normalized.includes(',')) {
+    normalized = normalized.replace(',', '.');
+  } else {
+    const dotMatches = normalized.match(/\./g) || [];
+    if (dotMatches.length > 1) {
+      normalized = normalized.replace(/\./g, '');
+    }
+  }
+
+  return Number(normalized);
+}
+
 function syncVisibleInputsToState() {
   const inputs = document.querySelectorAll('.cell-input[data-area-id][data-ind-id][data-col]');
   let changed = false;

@@ -1373,14 +1373,14 @@ function getUnit(aId, ind) {
 function formatVal(raw, unit) {
   if (raw === '' || raw === null || raw === undefined) return '-';
   if (unit === 'h') {
-    const n = parseFloat(raw);
+    const n = parseLocalizedNumber(raw);
     if (isNaN(n)) return raw;
     const h = Math.floor(Math.abs(n));
     const m = Math.round((Math.abs(n) - h) * 60);
     const sign = n < 0 ? '-' : '';
     return `${sign}${h}:${String(m).padStart(2,'0')}`;
   }
-  const n = parseFloat(raw);
+  const n = parseLocalizedNumber(raw);
   if (isNaN(n)) return raw;
   if (unit === '%') {
     return n.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';

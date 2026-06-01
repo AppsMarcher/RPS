@@ -254,7 +254,7 @@ function calcWeekValue(aId, ind, semana, stack = new Set()) {
     return formulaVal;
   }
 
-  const v = parseFloat(raw);
+  const v = parseLocalizedNumber(raw);
   stack.delete(stackKey);
   return isNaN(v) ? null : v;
 }
@@ -280,7 +280,7 @@ function calcMes(aId, ind, options = {}) {
   }
   const modo = state.modoMes[modoMesK(aId, ind.id)] || 'soma';
   if (modo === 'manual') {
-    const v = parseFloat(state.dadosMes[dadosMesK(aId, ind.id)]);
+    const v = parseLocalizedNumber(state.dadosMes[dadosMesK(aId, ind.id)]);
     return isNaN(v) ? null : v;
   }
   const vals = getVals(aId, ind);
@@ -304,7 +304,7 @@ function calcMeta(aId, ind, options = {}) {
   }
   const modo = state.modoMeta[modoMetaK(aId, ind.id)] || 'manual';
   if (modo === 'manual') {
-    const v = parseFloat(state.dadosMeta[dadosMetaK(aId, ind.id)]);
+    const v = parseLocalizedNumber(state.dadosMeta[dadosMetaK(aId, ind.id)]);
     return isNaN(v) ? null : v;
   }
   const vals = getVals(aId, ind);
