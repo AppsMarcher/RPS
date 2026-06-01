@@ -1078,6 +1078,40 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   gap: 4px;
   padding: 3px 5px;
 }
+.present-comment-popover {
+  display: none;
+  position: fixed;
+  z-index: 9500;
+  max-width: 340px;
+  min-width: 220px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border-s);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.22);
+  padding: 10px 12px;
+}
+.present-comment-popover.open {
+  display: block;
+}
+.present-comment-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #185FA5;
+  margin-bottom: 6px;
+}
+.present-comment-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.present-comment-cell {
+  cursor: pointer;
+}
 .present-cell-val {
   font-size: 13px;
   color: var(--color-text-primary);
@@ -1206,6 +1240,14 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
 }
 .present-overlay.present-dark-mode .present-clip-btn:hover {
   background: rgba(77,145,223,0.16);
+}
+.present-overlay.present-dark-mode .present-comment-popover {
+  background: #1F262E;
+  border-color: rgba(255,255,255,0.12);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.4);
+}
+.present-overlay.present-dark-mode .present-comment-title {
+  color: #8BC2FF;
 }
 .present-overlay.present-dark-mode .p-meta-val {
   color: #FFBE5C;
