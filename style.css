@@ -1086,6 +1086,12 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   min-height: 14px;
   padding: 0;
   background: #fff;
+  font-size: 0;
+  line-height: 0;
+}
+.present-app .present-spacer-fill {
+  display: block;
+  height: 14px;
 }
 .present-cell-wrap {
   display: flex;
