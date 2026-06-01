@@ -128,6 +128,7 @@ const REMINDER_FUNCTION_NAME = 'send-rps-reminder';
 const ATTACHMENTS_BUCKET = 'rps-attachments';
 const APP_PUBLIC_URL = 'https://rps.marcher.com.br/';
 const ADMIN_EMAIL = 'ricardo@marcher.com.br';
+const LOCAL_DRAFT_PREFIX = 'rps_local_draft_v1';
 
 const key        = (a,i,c)  => `${a}|${i}|${c}`;
 const anexoKey   = (a,i,c)  => `anx:${a}|${i}|${c}`;

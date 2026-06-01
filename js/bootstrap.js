@@ -30,6 +30,7 @@
   initSupabase();
   if (!supabaseClient) return;
 
+  registerPersistenceLifecycle();
   registerAuthListener();
   renderAll();
 

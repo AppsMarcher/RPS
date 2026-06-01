@@ -119,6 +119,78 @@ function getSyncBasePayload() {
   return normalizeSnapshotPayload(state.sync.basePayload);
 }
 
+function getDraftOwnerKey() {
+  return state.auth.user?.id || state.auth.user?.email || 'anonymous';
+}
+
+function getLocalDraftStorageKey(year = state.ano, month = state.mesIdx + 1) {
+  return `${LOCAL_DRAFT_PREFIX}:${getDraftOwnerKey()}:${year}:${month}`;
+}
+
+function loadLocalDraft(year = state.ano, month = state.mesIdx + 1) {
+  try {
+    const raw = localStorage.getItem(getLocalDraftStorageKey(year, month));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.payload) return null;
+    return {
+      savedAt: parsed.savedAt || null,
+      payload: normalizeSnapshotPayload(parsed.payload),
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function persistLocalDraft(payload = buildSnapshotPayload()) {
+  try {
+    localStorage.setItem(
+      getLocalDraftStorageKey(),
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        payload: normalizeSnapshotPayload(payload),
+      })
+    );
+  } catch (error) {
+    // Ignora falhas de quota/storage para não bloquear a edição.
+  }
+}
+
+function clearLocalDraft(year = state.ano, month = state.mesIdx + 1) {
+  try {
+    localStorage.removeItem(getLocalDraftStorageKey(year, month));
+  } catch (error) {
+    // Sem ação: remoção local é apenas melhor esforço.
+  }
+}
+
+function recoverLocalDraftIfNeeded(remotePayload) {
+  const draft = loadLocalDraft();
+  if (!draft) return false;
+
+  const normalizedRemote = remotePayload ? normalizeSnapshotPayload(remotePayload) : null;
+  if (normalizedRemote && areSnapshotValuesEqual(draft.payload, normalizedRemote)) {
+    clearLocalDraft();
+    return false;
+  }
+
+  applySnapshotPayload(draft.payload);
+  setSyncBasePayload(remotePayload || null);
+  renderAll();
+  setSyncStatus('dirty', `Rascunho local recuperado para ${getPeriodoLabel()}`, true);
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveToCloud(true);
+  }, 400);
+  return true;
+}
+
+function flushPendingChanges() {
+  if (!state.sync.enabled || !state.sync.dirty) return;
+  persistLocalDraft(buildSnapshotPayload());
+  saveToCloud(true);
+}
+
 function areSnapshotValuesEqual(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -503,6 +575,7 @@ function renderAdminUsers() {
 function markDirty() {
   if (!state.sync.enabled) return;
   state.sync.dirty = true;
+  persistLocalDraft(buildSnapshotPayload());
   setSyncStatus('dirty', `Alterações locais em ${getPeriodoLabel()}`, true);
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -517,6 +590,7 @@ async function saveToCloud(silent = false) {
   setSyncStatus('saving', `Salvando ${getPeriodoLabel()}...`, state.sync.dirty);
 
   const localPayload = buildSnapshotPayload();
+  persistLocalDraft(localPayload);
   const basePayload = getSyncBasePayload();
   const { data: remoteData, error: remoteError } = await supabaseClient
     .from(SUPABASE_TABLE)
@@ -553,6 +627,7 @@ async function saveToCloud(silent = false) {
     const { payload: reconciledPayload } = mergeSnapshotPayloads(localPayload, mergedPayload, livePayload);
     applySnapshotPayload(reconciledPayload);
     setSyncBasePayload(mergedPayload);
+    persistLocalDraft(reconciledPayload);
     renderAll();
     setSyncStatus('dirty', `Alterações locais em ${getPeriodoLabel()}`, true);
     saveTimer = setTimeout(() => {
@@ -563,6 +638,7 @@ async function saveToCloud(silent = false) {
 
   applySnapshotPayload(mergedPayload);
   setSyncBasePayload(mergedPayload);
+  clearLocalDraft();
   renderAll();
   setSyncStatus(
     'ready',
@@ -584,7 +660,7 @@ async function reloadFromCloud(silent = false) {
 
   const { data, error } = await supabaseClient
     .from(SUPABASE_TABLE)
-    .select('payload')
+    .select('payload, updated_at')
     .eq('ano', state.ano)
     .eq('mes', state.mesIdx + 1)
     .maybeSingle();
@@ -595,6 +671,9 @@ async function reloadFromCloud(silent = false) {
   }
 
   if (!data || !data.payload) {
+    if (recoverLocalDraftIfNeeded(null)) {
+      return true;
+    }
     resetStateData();
     initData();
     setSyncBasePayload(null);
@@ -605,8 +684,13 @@ async function reloadFromCloud(silent = false) {
     return true;
   }
 
+  if (recoverLocalDraftIfNeeded(data.payload)) {
+    return true;
+  }
+
   applySnapshotPayload(data.payload);
   setSyncBasePayload(data.payload);
+  clearLocalDraft();
   renderAll();
   state.sync.lastSuccessAt = formatSyncTimestamp();
   setSyncStatus('ready', `Dados carregados: ${getPeriodoLabel()}`, false);
@@ -689,6 +773,17 @@ function registerAuthListener() {
   });
 
   authSubscription = data.subscription;
+}
+
+function registerPersistenceLifecycle() {
+  window.addEventListener('pagehide', () => {
+    flushPendingChanges();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushPendingChanges();
+    }
+  });
 }
 
 async function submitLogin(event) {
