@@ -80,12 +80,12 @@
       <i class="ti ti-eye" style="font-size:11px"></i>
       <span id="focus-label">Nenhuma semana em foco</span>
     </span>
+    <button class="btn btn-primary hidden" id="save-btn" type="button" onclick="manualSaveSnapshot()"><i class="ti ti-device-floppy"></i> Salvar</button>
+    <button class="btn hidden" id="reload-btn" type="button" onclick="manualReloadSnapshot()"><i class="ti ti-refresh"></i> Recarregar</button>
     <span class="sync-badge" id="sync-badge">
       <i class="ti ti-cloud-off"></i>
       <span id="sync-label">Sincronização automática indisponível</span>
     </span>
-    <button class="btn btn-primary hidden" id="save-btn" type="button" onclick="manualSaveSnapshot()"><i class="ti ti-device-floppy"></i> Salvar</button>
-    <button class="btn hidden" id="reload-btn" type="button" onclick="manualReloadSnapshot()"><i class="ti ti-refresh"></i> Recarregar</button>
     <div style="flex:1"></div>
     <button class="btn" id="add-area-btn" onclick="addArea()"><i class="ti ti-plus"></i> Nova área</button>
   </div>
