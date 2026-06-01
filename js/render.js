@@ -155,7 +155,7 @@ function renderBody() {
           inp.select();
         };
         inp.onblur = e => {
-          const rv = e.target.value;
+          const rv = normalizeValueForStorage(e.target.value, unitCell);
           applyGridChange(() => {
             state.dados[e.target.dataset.key] = rv;
           });
@@ -238,7 +238,7 @@ function renderBody() {
           inp2.select();
         };
         inp2.onblur = e => {
-          const rv = e.target.value;
+          const rv = normalizeValueForStorage(e.target.value, unit);
           applyGridChange(() => {
             state.dadosMes[dadosMesK(area.id, ind.id)] = rv;
           });
@@ -293,7 +293,7 @@ function renderBody() {
           inp3.select();
         };
         inp3.onblur = e => {
-          const rv = e.target.value;
+          const rv = normalizeValueForStorage(e.target.value, unit);
           applyGridChange(() => {
             state.dadosMeta[dadosMetaK(area.id, ind.id)] = rv;
           });

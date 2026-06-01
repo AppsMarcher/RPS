@@ -264,6 +264,41 @@ function parseLocalizedNumber(raw) {
   return Number(normalized);
 }
 
+function normalizeValueForStorage(raw, unit) {
+  if (raw === null || raw === undefined) return '';
+  if (typeof raw === 'number') return Number.isFinite(raw) ? String(raw) : '';
+
+  const text = String(raw).trim();
+  if (!text || text.startsWith('=')) return text;
+
+  // Horas devem preservar a entrada 1:30, pois parseLocalizedNumber converte para decimal.
+  if (unit === 'h') return text;
+
+  const numeric = parseLocalizedNumber(text);
+  if (!Number.isFinite(numeric)) return text;
+
+  // Guarda números em formato canônico no estado/banco.
+  // Isso evita ambiguidade entre separador de milhar pt-BR e decimal JS:
+  // "450.000" passa a ser salvo como "450000", e não corre o risco de voltar como 450.
+  return String(numeric);
+}
+
+function getUnitForCell(areaId, indId, col) {
+  if (!areaId || !indId) return 'R$';
+
+  if (state.semanas.includes(col)) {
+    return state.unidades[key(areaId, indId, col)] || 'R$';
+  }
+
+  const ind = getIndicators(areaId).find(item => item.id === indId);
+  return ind ? getUnit(areaId, ind) : 'R$';
+}
+
+function parseManualValueKey(storageKey) {
+  const match = String(storageKey || '').match(/^v(?:mes|meta):([^|]+)\|(.+)$/);
+  return match ? { areaId: match[1], indId: match[2] } : null;
+}
+
 function syncVisibleInputsToState() {
   const activeInput = document.activeElement;
   let changed = false;
@@ -275,7 +310,7 @@ function syncVisibleInputsToState() {
   const areaId = activeInput.dataset.areaId;
   const indId = activeInput.dataset.indId;
   const col = activeInput.dataset.col;
-  const rawValue = activeInput.value;
+  const rawValue = normalizeValueForStorage(activeInput.value, getUnitForCell(areaId, indId, col));
 
   if (!areaId || !indId || !col) return changed;
 
@@ -661,8 +696,8 @@ function parseClipboardTable(text) {
 function setGridCellRawValue(areaId, indId, col, rawValue) {
   const normalizedCol = normalizeGridCol(col);
   if (!normalizedCol) return false;
-  const raw = String(rawValue ?? '');
   const ind = getIndicators(areaId).find(item => item.id === indId);
+  const raw = normalizeValueForStorage(rawValue, getUnitForCell(areaId, indId, normalizedCol));
   if (!ind) return false;
 
   if (state.semanas.includes(normalizedCol)) {

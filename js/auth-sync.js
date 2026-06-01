@@ -482,16 +482,43 @@ function buildSnapshotPayload() {
     ])
   );
 
+  const sanitizedDados = Object.fromEntries(
+    Object.entries(state.dados).map(([cellKey, raw]) => [
+      cellKey,
+      normalizeValueForStorage(raw, state.unidades[cellKey] || 'R$'),
+    ])
+  );
+
+  const sanitizedDadosMes = Object.fromEntries(
+    Object.entries(state.dadosMes).map(([storageKey, raw]) => {
+      const ref = parseManualValueKey(storageKey);
+      const unit = ref ? getUnitForCell(ref.areaId, ref.indId, 'mes') : 'R$';
+      return [storageKey, normalizeValueForStorage(raw, unit)];
+    })
+  );
+
+  const sanitizedDadosMeta = Object.fromEntries(
+    Object.entries(state.dadosMeta).map(([storageKey, raw]) => {
+      const ref = parseManualValueKey(storageKey);
+      const unit = ref ? getUnitForCell(ref.areaId, ref.indId, 'meta') : 'R$';
+      return [storageKey, normalizeValueForStorage(raw, unit)];
+    })
+  );
+
+  state.dados = sanitizedDados;
+  state.dadosMes = sanitizedDadosMes;
+  state.dadosMeta = sanitizedDadosMeta;
+
   return {
     version: 2,
     areas: state.areas,
     indicadores: state.indicadores,
     unidades: state.unidades,
-    dados: state.dados,
+    dados: sanitizedDados,
     cellStyles: state.cellStyles,
     comentarios: state.comentarios,
-    dadosMes: state.dadosMes,
-    dadosMeta: state.dadosMeta,
+    dadosMes: sanitizedDadosMes,
+    dadosMeta: sanitizedDadosMeta,
     anexos: serializedAttachments,
     modoMes: state.modoMes,
     modoMeta: state.modoMeta,
