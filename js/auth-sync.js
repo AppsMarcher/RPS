@@ -119,6 +119,86 @@ function getSyncBasePayload() {
   return normalizeSnapshotPayload(state.sync.basePayload);
 }
 
+function buildDefaultSnapshotShape() {
+  const indicadores = {};
+  Object.entries(INDICADORES_DEFAULT).forEach(([areaId, items]) => {
+    indicadores[areaId] = items.map((item, idx) => normalizeIndicator(item, idx));
+  });
+
+  return {
+    areas: JSON.parse(JSON.stringify(AREAS)),
+    indicadores,
+  };
+}
+
+function normalizeAreasForShape(areas) {
+  return (Array.isArray(areas) ? areas : []).map(area => ({
+    id: String(area?.id || ''),
+    nome: String(area?.nome || ''),
+    icon: String(area?.icon || ''),
+    cor: String(area?.cor || ''),
+  }));
+}
+
+function normalizeIndicadoresForShape(indicadores) {
+  const source = indicadores && typeof indicadores === 'object' ? indicadores : {};
+  return Object.fromEntries(
+    Object.entries(source).map(([areaId, items]) => [
+      areaId,
+      (Array.isArray(items) ? items : []).map((item, idx) => {
+        const normalized = normalizeIndicator(item, idx);
+        return {
+          id: String(normalized.id || ''),
+          label: String(normalized.label || ''),
+          parentId: normalized.parentId || null,
+          aggregate: normalized.aggregate || null,
+          type: normalized.type || 'item',
+          editableFields: normalizeEditableFields(normalized),
+        };
+      }),
+    ])
+  );
+}
+
+function isDefaultSnapshotShape(payload) {
+  const normalized = normalizeSnapshotPayload(payload);
+  const defaults = buildDefaultSnapshotShape();
+  return areSnapshotValuesEqual(
+    normalizeAreasForShape(normalized.areas),
+    normalizeAreasForShape(defaults.areas)
+  ) && areSnapshotValuesEqual(
+    normalizeIndicadoresForShape(normalized.indicadores),
+    normalizeIndicadoresForShape(defaults.indicadores)
+  );
+}
+
+function hasMeaningfulSnapshotContent(payload) {
+  const normalized = normalizeSnapshotPayload(payload);
+  const hasNonEmptyMapValue = map => Object.values(map || {}).some(value => {
+    if (typeof value === 'string') return value.trim() !== '';
+    if (Array.isArray(value)) return value.length > 0;
+    if (value && typeof value === 'object') return Object.keys(value).length > 0;
+    return value !== null && value !== undefined && value !== false;
+  });
+
+  return hasNonEmptyMapValue(normalized.dados) ||
+    hasNonEmptyMapValue(normalized.dadosMes) ||
+    hasNonEmptyMapValue(normalized.dadosMeta) ||
+    hasNonEmptyMapValue(normalized.comentarios) ||
+    hasNonEmptyMapValue(normalized.cellStyles) ||
+    hasNonEmptyMapValue(normalized.anexos);
+}
+
+function shouldProtectRemoteSnapshot(basePayload, remotePayload, localPayload) {
+  if (basePayload) return false;
+  if (!remotePayload) return false;
+  if (!isDefaultSnapshotShape(localPayload)) return false;
+  if (!isDefaultSnapshotShape(remotePayload)) {
+    return !hasMeaningfulSnapshotContent(localPayload);
+  }
+  return false;
+}
+
 function getDraftOwnerKey() {
   return state.auth.user?.id || state.auth.user?.email || 'anonymous';
 }
@@ -403,7 +483,11 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
       return { ok: false, errorMessage: 'Falha ao validar dados remotos antes de salvar' };
     }
 
-    const { payload: mergedPayload, conflicts } = mergeSnapshotPayloads(basePayload, remoteData?.payload, localPayload);
+    const protectedLocalPayload = shouldProtectRemoteSnapshot(basePayload, remoteData?.payload, localPayload)
+      ? normalizeSnapshotPayload(remoteData?.payload)
+      : localPayload;
+
+    const { payload: mergedPayload, conflicts } = mergeSnapshotPayloads(basePayload, remoteData?.payload, protectedLocalPayload);
     const saveRow = {
       ano: state.ano,
       mes: state.mesIdx + 1,
@@ -482,43 +566,16 @@ function buildSnapshotPayload() {
     ])
   );
 
-  const sanitizedDados = Object.fromEntries(
-    Object.entries(state.dados).map(([cellKey, raw]) => [
-      cellKey,
-      normalizeValueForStorage(raw, state.unidades[cellKey] || 'R$'),
-    ])
-  );
-
-  const sanitizedDadosMes = Object.fromEntries(
-    Object.entries(state.dadosMes).map(([storageKey, raw]) => {
-      const ref = parseManualValueKey(storageKey);
-      const unit = ref ? getUnitForCell(ref.areaId, ref.indId, 'mes') : 'R$';
-      return [storageKey, normalizeValueForStorage(raw, unit)];
-    })
-  );
-
-  const sanitizedDadosMeta = Object.fromEntries(
-    Object.entries(state.dadosMeta).map(([storageKey, raw]) => {
-      const ref = parseManualValueKey(storageKey);
-      const unit = ref ? getUnitForCell(ref.areaId, ref.indId, 'meta') : 'R$';
-      return [storageKey, normalizeValueForStorage(raw, unit)];
-    })
-  );
-
-  state.dados = sanitizedDados;
-  state.dadosMes = sanitizedDadosMes;
-  state.dadosMeta = sanitizedDadosMeta;
-
   return {
     version: 2,
     areas: state.areas,
     indicadores: state.indicadores,
     unidades: state.unidades,
-    dados: sanitizedDados,
+    dados: state.dados,
     cellStyles: state.cellStyles,
     comentarios: state.comentarios,
-    dadosMes: sanitizedDadosMes,
-    dadosMeta: sanitizedDadosMeta,
+    dadosMes: state.dadosMes,
+    dadosMeta: state.dadosMeta,
     anexos: serializedAttachments,
     modoMes: state.modoMes,
     modoMeta: state.modoMeta,
