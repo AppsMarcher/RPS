@@ -300,43 +300,44 @@ function parseManualValueKey(storageKey) {
 }
 
 function syncVisibleInputsToState() {
-  const activeInput = document.activeElement;
   let changed = false;
 
-  if (!(activeInput instanceof HTMLInputElement) || !activeInput.classList.contains('cell-input')) {
-    return changed;
-  }
+  // Captura todos os inputs de célula visíveis na tela, não apenas o focado.
+  // Isso evita perda de dados quando a página é ocultada/fechada enquanto o
+  // foco já mudou para outro elemento (ex.: scroll, clique em botão, etc.).
+  const inputs = document.querySelectorAll('input.cell-input');
+  inputs.forEach(input => {
+    const areaId = input.dataset.areaId;
+    const indId = input.dataset.indId;
+    const col = input.dataset.col;
+    if (!areaId || !indId || !col) return;
 
-  const areaId = activeInput.dataset.areaId;
-  const indId = activeInput.dataset.indId;
-  const col = activeInput.dataset.col;
-  const rawValue = normalizeValueForStorage(activeInput.value, getUnitForCell(areaId, indId, col));
+    const rawValue = normalizeValueForStorage(input.value, getUnitForCell(areaId, indId, col));
 
-  if (!areaId || !indId || !col) return changed;
+    if (col === 'mes') {
+      const storageKey = dadosMesK(areaId, indId);
+      if ((state.dadosMes[storageKey] || '') !== rawValue) {
+        state.dadosMes[storageKey] = rawValue;
+        changed = true;
+      }
+      return;
+    }
 
-  if (col === 'mes') {
-    const storageKey = dadosMesK(areaId, indId);
-    if ((state.dadosMes[storageKey] || '') !== rawValue) {
-      state.dadosMes[storageKey] = rawValue;
+    if (col === 'meta') {
+      const storageKey = dadosMetaK(areaId, indId);
+      if ((state.dadosMeta[storageKey] || '') !== rawValue) {
+        state.dadosMeta[storageKey] = rawValue;
+        changed = true;
+      }
+      return;
+    }
+
+    const storageKey = key(areaId, indId, col);
+    if ((state.dados[storageKey] || '') !== rawValue) {
+      state.dados[storageKey] = rawValue;
       changed = true;
     }
-    return changed;
-  }
-
-  if (col === 'meta') {
-    const storageKey = dadosMetaK(areaId, indId);
-    if ((state.dadosMeta[storageKey] || '') !== rawValue) {
-      state.dadosMeta[storageKey] = rawValue;
-      changed = true;
-    }
-    return changed;
-  }
-
-  const storageKey = key(areaId, indId, col);
-  if ((state.dados[storageKey] || '') !== rawValue) {
-    state.dados[storageKey] = rawValue;
-    changed = true;
-  }
+  });
 
   return changed;
 }

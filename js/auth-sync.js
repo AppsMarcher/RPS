@@ -694,18 +694,66 @@ async function confirmCopyMonthConfiguration() {
     return;
   }
 
-  const payload = buildStructureOnlyPayload();
-  const { error } = await supabaseClient
-    .from(SUPABASE_TABLE)
-    .upsert({
-      ano: year,
-      mes: month,
-      payload,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'ano,mes' });
+  const structurePayload = buildStructureOnlyPayload();
 
-  if (error) {
-    alert(error.message || 'Não foi possível copiar a configuração para o mês escolhido.');
+  // Usa merge seguro: lê o snapshot atual do mês destino, mescla apenas a
+  // estrutura (áreas, indicadores, fórmulas, modoMes/modoMeta) preservando
+  // os dados já preenchidos (dados, dadosMes, dadosMeta, comentarios, anexos).
+  // Usa guard de updated_at para evitar sobrescrita concorrente.
+  const { data: remoteData, error: fetchError } = await supabaseClient
+    .from(SUPABASE_TABLE)
+    .select('payload, updated_at')
+    .eq('ano', year)
+    .eq('mes', month)
+    .maybeSingle();
+
+  if (fetchError) {
+    alert(fetchError.message || 'Não foi possível verificar os dados do mês destino antes de copiar.');
+    return;
+  }
+
+  // Monta o payload mesclado: estrutura vem da origem, dados vêm do destino.
+  const remotePayload = remoteData?.payload ? normalizeSnapshotPayload(remoteData.payload) : null;
+  const mergedPayload = {
+    ...structurePayload,
+    dados:       remotePayload?.dados       || {},
+    cellStyles:  remotePayload?.cellStyles  || {},
+    comentarios: remotePayload?.comentarios || {},
+    dadosMes:    remotePayload?.dadosMes    || {},
+    dadosMeta:   remotePayload?.dadosMeta   || {},
+    anexos:      remotePayload?.anexos      || {},
+  };
+
+  const saveRow = {
+    ano: year,
+    mes: month,
+    payload: mergedPayload,
+    updated_at: new Date().toISOString(),
+  };
+
+  let saveError;
+  if (!remoteData) {
+    const { error } = await supabaseClient.from(SUPABASE_TABLE).insert(saveRow);
+    saveError = error;
+  } else {
+    // Guard de updated_at: impede sobrescrita se outro usuário salvou entre o
+    // fetch acima e o update agora.
+    const guardQuery = remoteData.updated_at
+      ? supabaseClient.from(SUPABASE_TABLE).update(saveRow)
+          .eq('ano', year).eq('mes', month).eq('updated_at', remoteData.updated_at)
+      : supabaseClient.from(SUPABASE_TABLE).update(saveRow)
+          .eq('ano', year).eq('mes', month).is('updated_at', null);
+
+    const { data: updatedRows, error } = await guardQuery.select('updated_at').limit(1);
+    if (!error && (!Array.isArray(updatedRows) || !updatedRows.length)) {
+      alert('O mês destino foi modificado por outro usuário durante a operação. Tente novamente.');
+      return;
+    }
+    saveError = error;
+  }
+
+  if (saveError) {
+    alert(saveError.message || 'Não foi possível copiar a configuração para o mês escolhido.');
     return;
   }
 
