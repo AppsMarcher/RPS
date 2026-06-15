@@ -554,6 +554,8 @@ function bindPresentCommentPopover(td, commentKey) {
   const comment = getCellComment(commentKey).trim();
   if (!comment || !td) return;
 
+  // In presentation mode we keep only the custom popover, not the browser title tooltip.
+  td.removeAttribute('title');
   td.classList.add('present-comment-cell');
   td.onmouseenter = () => showPresentCommentPopover(td, comment);
   td.onmouseleave = () => hidePresentCommentPopover();
