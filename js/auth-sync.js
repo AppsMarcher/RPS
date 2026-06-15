@@ -1002,6 +1002,10 @@ async function manualSaveSnapshot() {
 
 async function manualReloadSnapshot() {
   if (!state.sync.enabled) return false;
+  const visibleInputChanged = syncVisibleInputsToState();
+  if (visibleInputChanged) {
+    state.sync.dirty = true;
+  }
   if (state.sync.dirty) {
     const shouldDiscard = confirm(`Existem alterações locais em ${getPeriodoLabel()} ainda não sincronizadas.\n\nDeseja recarregar do banco mesmo assim?`);
     if (!shouldDiscard) return false;
@@ -1024,6 +1028,11 @@ async function applyAuthSession(session) {
   }
 
   if (!state.auth.user) {
+    const visibleInputChanged = syncVisibleInputsToState();
+    if (state.sync.enabled && (state.sync.dirty || visibleInputChanged)) {
+      state.sync.dirty = true;
+      persistLocalDraft(buildSnapshotPayload());
+    }
     state.auth.loadedUserId = null;
     state.auth.profile = null;
     state.auth.users = [];
@@ -1089,6 +1098,15 @@ function registerAuthListener() {
 function registerPersistenceLifecycle() {
   window.addEventListener('pagehide', () => {
     flushPendingChanges();
+  });
+  window.addEventListener('beforeunload', () => {
+    const visibleInputChanged = syncVisibleInputsToState();
+    if (visibleInputChanged) {
+      state.sync.dirty = true;
+    }
+    if (state.sync.dirty) {
+      persistLocalDraft(buildSnapshotPayload());
+    }
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') {

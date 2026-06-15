@@ -862,7 +862,11 @@ async function changeMonth(d) {
     state.sync.dirty = true;
   }
   if (state.sync.enabled && state.sync.dirty) {
-    await saveToCloud(true);
+    const saved = await saveToCloud(true);
+    if (!saved) {
+      setSyncStatus('error', `Não foi possível salvar ${getPeriodoLabel()} antes de trocar de mês`, true);
+      return;
+    }
   }
   state.mesIdx += d;
   if (state.mesIdx < 0) {
@@ -973,5 +977,4 @@ function hideFormulaHint() {
 document.addEventListener('focusout', () => {
   setTimeout(hideFormulaHint, 200);
 }, true);
-
 
