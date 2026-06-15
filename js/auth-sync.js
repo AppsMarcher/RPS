@@ -618,6 +618,14 @@ function extractFormulaEntries() {
   );
 }
 
+function stripFormulaEntries(entries = {}) {
+  return Object.fromEntries(
+    Object.entries(entries).filter(([, raw]) =>
+      !(typeof raw === 'string' && raw.trim().startsWith('='))
+    )
+  );
+}
+
 function buildStructureOnlyPayload() {
   return {
     version: 2,
@@ -697,6 +705,10 @@ async function confirmCopyMonthConfiguration() {
   if (!canEditStructure()) return;
   if (!supabaseClient) return;
 
+  if (syncVisibleInputsToState()) {
+    state.sync.dirty = true;
+  }
+
   const month = Number(document.getElementById('copy-config-month')?.value);
   const year = Number(document.getElementById('copy-config-year')?.value);
   if (!month || !year) {
@@ -742,9 +754,10 @@ async function confirmCopyMonthConfiguration() {
 
   // Monta o payload mesclado: estrutura vem da origem, dados vêm do destino.
   const remotePayload = remoteData?.payload ? normalizeSnapshotPayload(remoteData.payload) : null;
+  const preservedTargetData = stripFormulaEntries(remotePayload?.dados || {});
   const mergedPayload = {
     ...structurePayload,
-    dados:       remotePayload?.dados       || {},
+    dados:       { ...preservedTargetData, ...structurePayload.dados },
     cellStyles:  remotePayload?.cellStyles  || {},
     comentarios: remotePayload?.comentarios || {},
     dadosMes:    remotePayload?.dadosMes    || {},
