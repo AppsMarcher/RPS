@@ -474,7 +474,7 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
   for (let attempt = 0; attempt < 6; attempt++) {
     const { data: remoteData, error: remoteError } = await supabaseClient
       .from(SUPABASE_TABLE)
-      .select('payload, updated_at')
+      .select('payload, version')
       .eq('ano', state.ano)
       .eq('mes', state.mesIdx + 1)
       .maybeSingle();
@@ -488,17 +488,19 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
       : localPayload;
 
     const { payload: mergedPayload, conflicts } = mergeSnapshotPayloads(basePayload, remoteData?.payload, protectedLocalPayload);
-    const saveRow = {
-      ano: state.ano,
-      mes: state.mesIdx + 1,
-      payload: mergedPayload,
-      updated_at: new Date().toISOString(),
-    };
 
+    // Sem linha remota: tenta inserir como version 1. O UNIQUE(ano, mes)
+    // garante que apenas um INSERT concorrente vence; o perdedor recebe 23505,
+    // relê e cai no ramo de UPDATE abaixo.
     if (!remoteData) {
       const { error: insertError } = await supabaseClient
         .from(SUPABASE_TABLE)
-        .insert(saveRow);
+        .insert({
+          ano: state.ano,
+          mes: state.mesIdx + 1,
+          payload: mergedPayload,
+          version: 1,
+        });
 
       if (!insertError) {
         return { ok: true, payload: mergedPayload, conflicts };
@@ -511,18 +513,21 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
       return { ok: false, errorMessage: 'Falha ao salvar no Supabase' };
     }
 
-    const updateQuery = supabaseClient
+    // CAS por inteiro: só grava se a version remota ainda for a que lemos.
+    // Comparação exata, sem fuso horário nem precisão de timestamp.
+    // O updated_at é setado pela trigger before-update no banco.
+    const currentVersion = Number(remoteData.version) || 0;
+
+    const { data: updatedRows, error: updateError } = await supabaseClient
       .from(SUPABASE_TABLE)
-      .update(saveRow)
+      .update({
+        payload: mergedPayload,
+        version: currentVersion + 1,
+      })
       .eq('ano', state.ano)
-      .eq('mes', state.mesIdx + 1);
-
-    const guardedQuery = remoteData.updated_at
-      ? updateQuery.eq('updated_at', remoteData.updated_at)
-      : updateQuery.is('updated_at', null);
-
-    const { data: updatedRows, error: updateError } = await guardedQuery
-      .select('updated_at')
+      .eq('mes', state.mesIdx + 1)
+      .eq('version', currentVersion)
+      .select('version')
       .limit(1);
 
     if (updateError) {
@@ -533,6 +538,9 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
     if (Array.isArray(updatedRows) && updatedRows.length) {
       return { ok: true, payload: mergedPayload, conflicts };
     }
+    // updatedRows vazio: outro editor avançou a version entre o select e o
+    // update. Relê (pega o payload já gravado por ele) e remescla na próxima
+    // iteração do loop.
   }
 
   if (!silent) {
@@ -699,10 +707,10 @@ async function confirmCopyMonthConfiguration() {
   // Usa merge seguro: lê o snapshot atual do mês destino, mescla apenas a
   // estrutura (áreas, indicadores, fórmulas, modoMes/modoMeta) preservando
   // os dados já preenchidos (dados, dadosMes, dadosMeta, comentarios, anexos).
-  // Usa guard de updated_at para evitar sobrescrita concorrente.
+  // Usa CAS por version para evitar sobrescrita concorrente.
   const { data: remoteData, error: fetchError } = await supabaseClient
     .from(SUPABASE_TABLE)
-    .select('payload, updated_at')
+    .select('payload, version')
     .eq('ano', year)
     .eq('mes', month)
     .maybeSingle();
@@ -724,27 +732,24 @@ async function confirmCopyMonthConfiguration() {
     anexos:      remotePayload?.anexos      || {},
   };
 
-  const saveRow = {
-    ano: year,
-    mes: month,
-    payload: mergedPayload,
-    updated_at: new Date().toISOString(),
-  };
-
   let saveError;
   if (!remoteData) {
-    const { error } = await supabaseClient.from(SUPABASE_TABLE).insert(saveRow);
+    const { error } = await supabaseClient.from(SUPABASE_TABLE).insert({
+      ano: year,
+      mes: month,
+      payload: mergedPayload,
+      version: 1,
+    });
     saveError = error;
   } else {
-    // Guard de updated_at: impede sobrescrita se outro usuário salvou entre o
-    // fetch acima e o update agora.
-    const guardQuery = remoteData.updated_at
-      ? supabaseClient.from(SUPABASE_TABLE).update(saveRow)
-          .eq('ano', year).eq('mes', month).eq('updated_at', remoteData.updated_at)
-      : supabaseClient.from(SUPABASE_TABLE).update(saveRow)
-          .eq('ano', year).eq('mes', month).is('updated_at', null);
-
-    const { data: updatedRows, error } = await guardQuery.select('updated_at').limit(1);
+    // CAS por version: impede sobrescrita se outro usuário salvou entre o
+    // fetch acima e o update agora. O updated_at é setado pela trigger.
+    const currentVersion = Number(remoteData.version) || 0;
+    const { data: updatedRows, error } = await supabaseClient
+      .from(SUPABASE_TABLE)
+      .update({ payload: mergedPayload, version: currentVersion + 1 })
+      .eq('ano', year).eq('mes', month).eq('version', currentVersion)
+      .select('version').limit(1);
     if (!error && (!Array.isArray(updatedRows) || !updatedRows.length)) {
       alert('O mês destino foi modificado por outro usuário durante a operação. Tente novamente.');
       return;
