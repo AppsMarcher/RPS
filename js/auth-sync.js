@@ -244,7 +244,7 @@ function clearLocalDraft(year = state.ano, month = state.mesIdx + 1) {
   }
 }
 
-function recoverLocalDraftIfNeeded(remotePayload) {
+function recoverLocalDraftIfNeeded(remotePayload, remoteUpdatedAt = null) {
   const draft = loadLocalDraft();
   if (!draft) return false;
 
@@ -252,6 +252,24 @@ function recoverLocalDraftIfNeeded(remotePayload) {
   if (normalizedRemote && areSnapshotValuesEqual(draft.payload, normalizedRemote)) {
     clearLocalDraft();
     return false;
+  }
+
+  const draftSavedAt = draft.savedAt ? Date.parse(draft.savedAt) : NaN;
+  const remoteSavedAt = remoteUpdatedAt ? Date.parse(remoteUpdatedAt) : NaN;
+  const draftHasContent = hasMeaningfulSnapshotContent(draft.payload);
+  const remoteHasContent = hasMeaningfulSnapshotContent(normalizedRemote);
+
+  // Se o banco tem snapshot mais novo (ou o rascunho local nem traz conteúdo real),
+  // não deixamos um draft velho sobrescrever/esconder os dados remotos em tela.
+  if (normalizedRemote) {
+    if (remoteHasContent && !draftHasContent) {
+      clearLocalDraft();
+      return false;
+    }
+    if (Number.isFinite(remoteSavedAt) && Number.isFinite(draftSavedAt) && remoteSavedAt >= draftSavedAt) {
+      clearLocalDraft();
+      return false;
+    }
   }
 
   applySnapshotPayload(draft.payload);
@@ -964,7 +982,7 @@ async function reloadFromCloud(silent = false) {
   }
 
   if (!data || !data.payload) {
-    if (recoverLocalDraftIfNeeded(null)) {
+    if (recoverLocalDraftIfNeeded(null, null)) {
       return true;
     }
     resetStateData();
@@ -977,7 +995,7 @@ async function reloadFromCloud(silent = false) {
     return true;
   }
 
-  if (recoverLocalDraftIfNeeded(data.payload)) {
+  if (recoverLocalDraftIfNeeded(data.payload, data.updated_at)) {
     return true;
   }
 
