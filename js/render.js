@@ -550,12 +550,18 @@ function showPresentCommentPopover(target, comment) {
   popover.style.top = `${top}px`;
 }
 
+function clearNativeTitleTooltip(root) {
+  if (!root) return;
+  root.removeAttribute('title');
+  root.querySelectorAll?.('[title]').forEach(el => el.removeAttribute('title'));
+}
+
 function bindPresentCommentPopover(td, commentKey) {
   const comment = getCellComment(commentKey).trim();
   if (!comment || !td) return;
 
   // In presentation mode we keep only the custom popover, not the browser title tooltip.
-  td.removeAttribute('title');
+  clearNativeTitleTooltip(td);
   td.classList.add('present-comment-cell');
   td.onmouseenter = () => showPresentCommentPopover(td, comment);
   td.onmouseleave = () => hidePresentCommentPopover();
@@ -729,6 +735,7 @@ function renderPresentBody() {
           wrap.appendChild(clipBtn);
         }
         td.appendChild(wrap);
+        clearNativeTitleTooltip(td);
         row.appendChild(td);
       });
 
@@ -743,6 +750,7 @@ function renderPresentBody() {
       applyCellCommentState(tdMes, mesCommentKey);
       bindPresentCommentPopover(tdMes, mesCommentKey);
       tdMes.innerHTML = `<div class="present-cell-wrap"><span class="present-cell-val">${formatNum(valMes, unit)}</span></div>`;
+      clearNativeTitleTooltip(tdMes);
       row.appendChild(tdMes);
 
       const tdMeta = document.createElement('td');
@@ -751,6 +759,7 @@ function renderPresentBody() {
       applyCellCommentState(tdMeta, metaCommentKey);
       bindPresentCommentPopover(tdMeta, metaCommentKey);
       tdMeta.innerHTML = `<div class="present-cell-wrap"><span class="present-cell-val p-meta-val">${formatNum(valMeta, unit)}</span></div>`;
+      clearNativeTitleTooltip(tdMeta);
       row.appendChild(tdMeta);
 
       const tdVarDiff = document.createElement('td');
