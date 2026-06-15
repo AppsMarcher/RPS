@@ -724,6 +724,57 @@ function setGridCellRawValue(areaId, indId, col, rawValue) {
   return false;
 }
 
+function syncGridInputElementToState(inputEl) {
+  const areaId = inputEl?.dataset?.areaId;
+  const indId = inputEl?.dataset?.indId;
+  const col = inputEl?.dataset?.col;
+  if (!areaId || !indId || !col) return false;
+
+  const normalizedCol = normalizeGridCol(col);
+  if (!normalizedCol) return false;
+
+  const raw = normalizeValueForStorage(inputEl.value, getUnitForCell(areaId, indId, normalizedCol));
+
+  if (state.semanas.includes(normalizedCol)) {
+    const storageKey = key(areaId, indId, normalizedCol);
+    if ((state.dados[storageKey] ?? '') === raw) return false;
+    state.dados[storageKey] = raw;
+    return true;
+  }
+
+  if (normalizedCol === 'mes') {
+    const modeKey = modoMesK(areaId, indId);
+    const storageKey = dadosMesK(areaId, indId);
+    let changed = false;
+    if (state.modoMes[modeKey] !== 'manual') {
+      state.modoMes[modeKey] = 'manual';
+      changed = true;
+    }
+    if ((state.dadosMes[storageKey] ?? '') !== raw) {
+      state.dadosMes[storageKey] = raw;
+      changed = true;
+    }
+    return changed;
+  }
+
+  if (normalizedCol === 'meta') {
+    const modeKey = modoMetaK(areaId, indId);
+    const storageKey = dadosMetaK(areaId, indId);
+    let changed = false;
+    if (state.modoMeta[modeKey] !== 'manual') {
+      state.modoMeta[modeKey] = 'manual';
+      changed = true;
+    }
+    if ((state.dadosMeta[storageKey] ?? '') !== raw) {
+      state.dadosMeta[storageKey] = raw;
+      changed = true;
+    }
+    return changed;
+  }
+
+  return false;
+}
+
 function handleGridPaste(event) {
   if (!canEditData()) return;
   const text = event.clipboardData?.getData('text/plain');
@@ -1510,5 +1561,4 @@ function hasSupabaseConfig() {
   const cfg = window.SUPABASE_CONFIG || {};
   return !!(cfg.url && cfg.anonKey && window.supabase && window.supabase.createClient);
 }
-
 

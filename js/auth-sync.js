@@ -576,8 +576,10 @@ function resetForSignedOut() {
   renderAll();
 }
 
-function buildSnapshotPayload() {
-  syncVisibleInputsToState();
+function buildSnapshotPayload(syncInputs = true) {
+  if (syncInputs) {
+    syncVisibleInputsToState();
+  }
   const serializedAttachments = Object.fromEntries(
     Object.entries(state.anexos).map(([cellKey, items]) => [
       cellKey,
@@ -902,15 +904,22 @@ function renderAdminUsers() {
   `;
 }
 
-function markDirty() {
+function markDirty(options = {}) {
+  const {
+    autosave = true,
+    autosaveDelayMs = 1200,
+    syncInputs = true,
+  } = options;
   if (!state.sync.enabled) return;
   state.sync.dirty = true;
-  persistLocalDraft(buildSnapshotPayload());
+  persistLocalDraft(buildSnapshotPayload(syncInputs));
   setSyncStatus('dirty', `Alterações locais em ${getPeriodoLabel()}`, true);
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveToCloud(true);
-  }, 1200);
+  if (autosave) {
+    saveTimer = setTimeout(() => {
+      saveToCloud(true);
+    }, autosaveDelayMs);
+  }
 }
 
 async function saveToCloud(silent = false) {

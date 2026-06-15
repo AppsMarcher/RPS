@@ -156,15 +156,24 @@ function renderBody() {
         };
         inp.onblur = e => {
           const rv = normalizeValueForStorage(e.target.value, unitCell);
-          applyGridChange(() => {
-            state.dados[e.target.dataset.key] = rv;
-          });
+          if (syncGridInputElementToState(e.target)) {
+            e.target.dataset.pendingSync = '1';
+          }
+          if (e.target.dataset.pendingSync === '1') {
+            markDirty({ syncInputs: false });
+            delete e.target.dataset.pendingSync;
+          }
           e.target.value = rv ? formatVal(rv, unitCell) : '';
+          renderBody();
         };
         inp.onkeydown = e => {
           handleGridEnterNavigation(e);
         };
         inp.oninput = e => {
+          if (syncGridInputElementToState(e.target)) {
+            e.target.dataset.pendingSync = '1';
+            markDirty({ autosave: false, syncInputs: false });
+          }
           if (canEditRows && e.target.value === '=') {
             showFormulaHint(e.target);
           } else {
@@ -239,13 +248,24 @@ function renderBody() {
         };
         inp2.onblur = e => {
           const rv = normalizeValueForStorage(e.target.value, unit);
-          applyGridChange(() => {
-            state.dadosMes[dadosMesK(area.id, ind.id)] = rv;
-          });
+          if (syncGridInputElementToState(e.target)) {
+            e.target.dataset.pendingSync = '1';
+          }
+          if (e.target.dataset.pendingSync === '1') {
+            markDirty({ syncInputs: false });
+            delete e.target.dataset.pendingSync;
+          }
           e.target.value = rv ? formatVal(rv, unit) : '';
+          renderBody();
         };
         inp2.onkeydown = e => {
           handleGridEnterNavigation(e);
+        };
+        inp2.oninput = e => {
+          if (syncGridInputElementToState(e.target)) {
+            e.target.dataset.pendingSync = '1';
+            markDirty({ autosave: false, syncInputs: false });
+          }
         };
         inp2.onpaste = handleGridPaste;
         inp2.onpointerdown = handleGridInputPointerDown;
@@ -294,13 +314,24 @@ function renderBody() {
         };
         inp3.onblur = e => {
           const rv = normalizeValueForStorage(e.target.value, unit);
-          applyGridChange(() => {
-            state.dadosMeta[dadosMetaK(area.id, ind.id)] = rv;
-          });
+          if (syncGridInputElementToState(e.target)) {
+            e.target.dataset.pendingSync = '1';
+          }
+          if (e.target.dataset.pendingSync === '1') {
+            markDirty({ syncInputs: false });
+            delete e.target.dataset.pendingSync;
+          }
           e.target.value = rv ? formatVal(rv, unit) : '';
+          renderBody();
         };
         inp3.onkeydown = e => {
           handleGridEnterNavigation(e);
+        };
+        inp3.oninput = e => {
+          if (syncGridInputElementToState(e.target)) {
+            e.target.dataset.pendingSync = '1';
+            markDirty({ autosave: false, syncInputs: false });
+          }
         };
         inp3.onpaste = handleGridPaste;
         inp3.onpointerdown = handleGridInputPointerDown;
@@ -977,4 +1008,3 @@ function hideFormulaHint() {
 document.addEventListener('focusout', () => {
   setTimeout(hideFormulaHint, 200);
 }, true);
-
