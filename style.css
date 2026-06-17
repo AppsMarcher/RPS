@@ -1093,18 +1093,12 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
 }
 
 .backup-day-btn.is-today {
-  position: relative;
+  border-style: dashed;
 }
 
-.backup-day-btn.is-today::after {
-  content: '';
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #185FA5;
+.backup-day-btn.is-today .backup-day-number {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .backup-day-btn:disabled {
@@ -1115,26 +1109,6 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
-}
-
-.backup-day-badges {
-  display: flex;
-  gap: 4px;
-}
-
-.backup-day-badge {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: #D7D3CC;
-}
-
-.backup-day-badge.is-db {
-  background: #185FA5;
-}
-
-.backup-day-badge.is-storage {
-  background: #2F8B57;
 }
 
 .backup-restore-preview {
