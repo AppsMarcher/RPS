@@ -1077,7 +1077,6 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   border-color: rgba(47, 139, 87, 0.22);
   color: var(--color-text-primary);
   cursor: pointer;
-  box-shadow: inset 0 -3px 0 #2F8B57;
 }
 
 .backup-day-btn.is-partial {
@@ -1085,21 +1084,12 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   border-color: rgba(239, 159, 39, 0.22);
   color: var(--color-text-primary);
   cursor: pointer;
-  box-shadow: inset 0 -3px 0 #EF9F27;
 }
 
 .backup-day-btn.is-selected {
   border-color: #185FA5;
   box-shadow: 0 0 0 2px rgba(24, 95, 165, 0.14);
   transform: translateY(-1px);
-}
-
-.backup-day-btn.is-available.is-selected {
-  box-shadow: 0 0 0 2px rgba(24, 95, 165, 0.14), inset 0 -3px 0 #2F8B57;
-}
-
-.backup-day-btn.is-partial.is-selected {
-  box-shadow: 0 0 0 2px rgba(24, 95, 165, 0.14), inset 0 -3px 0 #EF9F27;
 }
 
 .backup-day-btn:disabled {
@@ -1110,6 +1100,21 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
+}
+
+.backup-day-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.backup-day-status-dot.is-available {
+  background: #2F8B57;
+}
+
+.backup-day-status-dot.is-partial {
+  background: #EF9F27;
 }
 
 .backup-restore-preview {
