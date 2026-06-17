@@ -132,6 +132,7 @@ const SUPABASE_TABLE = 'rps_snapshots';
 const APP_USERS_TABLE = 'app_users';
 const APP_REMINDER_TABLE = 'app_reminder_settings';
 const REMINDER_FUNCTION_NAME = 'send-rps-reminder';
+const BACKUP_MANAGER_FUNCTION_NAME = 'manage-rps-backups';
 const ATTACHMENTS_BUCKET = 'rps-attachments';
 const APP_PUBLIC_URL = 'https://rps.marcher.com.br/';
 const ADMIN_EMAIL = 'ricardo@marcher.com.br';
@@ -1025,6 +1026,18 @@ function formatDateTimeLabel(value) {
   });
 }
 
+function formatDateLabel(value) {
+  if (!value) return '-';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 function getStoredPersonName(profile = state.auth.profile) {
   return normalizePersonName(profile?.name || profile?.full_name || profile?.nome || '');
 }
@@ -1218,6 +1231,7 @@ function renderAuthHeader() {
   const adminBtn = document.getElementById('admin-btn');
   const addAreaBtn = document.getElementById('add-area-btn');
   const copyMonthConfigBtn = document.getElementById('copy-month-config-btn');
+  const backupRestoreBtn = document.getElementById('backup-restore-btn');
   const saveBtn = document.getElementById('save-btn');
   const reloadBtn = document.getElementById('reload-btn');
   const headerSub = document.getElementById('header-sub');
@@ -1240,6 +1254,9 @@ function renderAuthHeader() {
   }
   if (copyMonthConfigBtn) {
     copyMonthConfigBtn.classList.toggle('hidden', !canEditStructure());
+  }
+  if (backupRestoreBtn) {
+    backupRestoreBtn.classList.toggle('hidden', !isAdminUser());
   }
   if (saveBtn) {
     saveBtn.classList.toggle('hidden', !canEditData());
@@ -1561,4 +1578,3 @@ function hasSupabaseConfig() {
   const cfg = window.SUPABASE_CONFIG || {};
   return !!(cfg.url && cfg.anonKey && window.supabase && window.supabase.createClient);
 }
-

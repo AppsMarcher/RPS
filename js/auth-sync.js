@@ -13,6 +13,13 @@
   setSyncStatus('ready', `Sincronização automática pronta para ${getPeriodoLabel()}`, false);
 }
 
+let backupRestoreState = {
+  entries: [],
+  selectedDate: '',
+  loading: false,
+  restoring: false,
+};
+
 async function fetchAppUserByEmail(email) {
   if (!supabaseClient) return null;
   const normalized = normalizeEmail(email);
@@ -641,6 +648,325 @@ function buildStructureOnlyPayload() {
     modoMes: JSON.parse(JSON.stringify(state.modoMes)),
     modoMeta: JSON.parse(JSON.stringify(state.modoMeta)),
   };
+}
+
+function getSaoPauloDateParts(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date)
+      .filter(part => part.type !== 'literal')
+      .map(part => [part.type, part.value])
+  );
+
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+  };
+}
+
+function formatBackupDateKey(value) {
+  const parts = getSaoPauloDateParts(value);
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
+function parseBackupDateKey(dateKey) {
+  const [year, month, day] = String(dateKey || '').split('-').map(Number);
+  if (!year || !month || !day) return new Date(NaN);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function getRecentBackupDateKeys(days = 30) {
+  const dates = [];
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  for (let offset = 0; offset < days; offset++) {
+    const current = new Date(today);
+    current.setDate(today.getDate() - offset);
+    dates.push(formatBackupDateKey(current));
+  }
+  return dates;
+}
+
+function setBackupRestoreMessage(message, type = '') {
+  const el = document.getElementById('backup-restore-message');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `login-message${type ? ` is-${type}` : ''}`;
+}
+
+function getBackupRestoreSelectedEntry() {
+  return backupRestoreState.entries.find(entry => entry.backupDate === backupRestoreState.selectedDate) || null;
+}
+
+function getBackupRestoreStatusLabel(entry) {
+  if (!entry) return 'Nenhum backup selecionado';
+  if (entry.isRestorable) return 'Backup completo disponível';
+  if (entry.hasDatabase || entry.hasStorage) return 'Backup parcial';
+  return 'Sem backup';
+}
+
+function buildBackupRestorePreviewHtml(entry) {
+  if (backupRestoreState.loading) {
+    return '<strong>Carregando backups</strong><span>Buscando os backups disponíveis dos últimos 30 dias.</span>';
+  }
+
+  if (!entry) {
+    return '<strong>Escolha uma data</strong><span>Selecione um dia com backup completo para habilitar a restauração automática.</span>';
+  }
+
+  const periods = Array.isArray(entry.databasePeriods) ? entry.databasePeriods.join(', ') : '';
+  return `
+    <strong>${escapeHtml(getBackupRestoreStatusLabel(entry))}</strong>
+    <div class="backup-restore-preview-grid">
+      <div>
+        <strong>Data do backup</strong>
+        <span>${escapeHtml(formatDateLabel(parseBackupDateKey(entry.backupDate)))}</span>
+      </div>
+      <div>
+        <strong>Snapshot(s) do banco</strong>
+        <span>${entry.databaseSnapshotCount || 0}</span>
+      </div>
+      <div>
+        <strong>Backup do storage</strong>
+        <span>${entry.storageBackupPrefix ? escapeHtml(entry.storageBackupPrefix) : 'Não encontrado'}</span>
+      </div>
+      <div>
+        <strong>Arquivos no storage</strong>
+        <span>${entry.storageFilesCopied ?? 0}</span>
+      </div>
+      <div style="grid-column:1 / -1">
+        <strong>Períodos incluídos</strong>
+        <span>${periods ? escapeHtml(periods) : 'Nenhum snapshot disponível para esta data.'}</span>
+      </div>
+    </div>
+  `;
+}
+
+function renderBackupRestorePreview() {
+  const preview = document.getElementById('backup-restore-preview');
+  const confirmBtn = document.getElementById('backup-restore-confirm-btn');
+  if (!preview) return;
+  const entry = getBackupRestoreSelectedEntry();
+  preview.innerHTML = buildBackupRestorePreviewHtml(entry);
+  if (confirmBtn) {
+    confirmBtn.disabled = !entry?.isRestorable || backupRestoreState.restoring || backupRestoreState.loading;
+  }
+}
+
+function selectBackupRestoreDate(dateKey) {
+  backupRestoreState.selectedDate = dateKey;
+  renderBackupRestoreCalendar();
+}
+
+function renderBackupRestoreCalendar() {
+  const host = document.getElementById('backup-restore-months');
+  if (!host) return;
+
+  const recentKeys = getRecentBackupDateKeys(30).reverse();
+  const recentKeySet = new Set(recentKeys);
+  const availabilityMap = Object.fromEntries(backupRestoreState.entries.map(entry => [entry.backupDate, entry]));
+  const monthKeys = [...new Set(recentKeys.map(key => key.slice(0, 7)))];
+  const weekdayLabels = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+
+  host.innerHTML = monthKeys.map(monthKey => {
+    const [year, month] = monthKey.split('-').map(Number);
+    const titleDate = new Date(year, month - 1, 1, 12, 0, 0, 0);
+    const firstWeekday = titleDate.getDay();
+    const totalDays = new Date(year, month, 0).getDate();
+    const weekdayRow = weekdayLabels.map(label => `<div class="backup-weekday">${label}</div>`).join('');
+
+    const cells = [];
+    for (let i = 0; i < firstWeekday; i++) {
+      cells.push('<div class="backup-day-spacer" aria-hidden="true"></div>');
+    }
+
+    const todayKey = formatBackupDateKey(new Date());
+    for (let day = 1; day <= totalDays; day++) {
+      const dateKey = `${monthKey}-${String(day).padStart(2, '0')}`;
+      const entry = availabilityMap[dateKey] || null;
+      const isRecent = recentKeySet.has(dateKey);
+      const hasAny = !!(entry?.hasDatabase || entry?.hasStorage);
+      const isSelected = backupRestoreState.selectedDate === dateKey;
+      const classes = [
+        'backup-day-btn',
+        entry?.isRestorable ? 'is-available' : '',
+        hasAny && !entry?.isRestorable ? 'is-partial' : '',
+        isSelected ? 'is-selected' : '',
+        todayKey === dateKey ? 'is-today' : '',
+      ].filter(Boolean).join(' ');
+
+      if (!isRecent) {
+        cells.push(`<button class="backup-day-btn" type="button" disabled><span class="backup-day-number">${day}</span></button>`);
+        continue;
+      }
+
+      const badges = `
+        <span class="backup-day-badges">
+          ${entry?.hasDatabase ? '<span class="backup-day-badge is-db" title="Database"></span>' : ''}
+          ${entry?.hasStorage ? '<span class="backup-day-badge is-storage" title="Storage"></span>' : ''}
+        </span>
+      `;
+
+      if (!hasAny) {
+        cells.push(`<button class="${classes}" type="button" disabled><span class="backup-day-number">${day}</span>${badges}</button>`);
+        continue;
+      }
+
+      cells.push(`
+        <button class="${classes}" type="button" onclick="selectBackupRestoreDate('${escapeJsString(dateKey)}')">
+          <span class="backup-day-number">${day}</span>
+          ${badges}
+        </button>
+      `);
+    }
+
+    return `
+      <div class="backup-month-card">
+        <div class="backup-month-title">${escapeHtml(titleDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }))}</div>
+        <div class="backup-weekday-row">${weekdayRow}</div>
+        <div class="backup-days-grid">${cells.join('')}</div>
+      </div>
+    `;
+  }).join('');
+
+  renderBackupRestorePreview();
+}
+
+async function callBackupManagerFunction(payload) {
+  if (!supabaseClient) {
+    throw new Error('Supabase não configurado para gerenciar backups.');
+  }
+
+  const { data: sessionData } = await supabaseClient.auth.getSession();
+  const accessToken = sessionData?.session?.access_token || '';
+  const anonKey = window.SUPABASE_CONFIG?.anonKey || '';
+  const functionUrl = getFunctionInvokeUrl(BACKUP_MANAGER_FUNCTION_NAME);
+
+  if (!functionUrl || !accessToken || !anonKey) {
+    throw new Error('Não foi possível preparar a autenticação para o gerenciamento de backups.');
+  }
+
+  const response = await fetch(functionUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+      apikey: anonKey,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || `${response.status} ${response.statusText}`);
+  }
+
+  return data;
+}
+
+async function loadBackupRestoreEntries() {
+  backupRestoreState.loading = true;
+  backupRestoreState.restoring = false;
+  setBackupRestoreMessage('Carregando backups disponíveis...');
+  renderBackupRestoreCalendar();
+
+  try {
+    const data = await callBackupManagerFunction({ action: 'list', days: 30 });
+    backupRestoreState.entries = Array.isArray(data?.backups) ? data.backups : [];
+    const firstRestorable = backupRestoreState.entries.find(entry => entry.isRestorable);
+    const firstPartial = backupRestoreState.entries.find(entry => entry.hasDatabase || entry.hasStorage);
+    backupRestoreState.selectedDate = firstRestorable?.backupDate || firstPartial?.backupDate || '';
+    setBackupRestoreMessage(firstRestorable
+      ? 'Escolha um backup completo para restaurar o app.'
+      : 'Nenhum backup completo foi encontrado nos últimos 30 dias.', firstRestorable ? '' : 'error');
+  } catch (error) {
+    backupRestoreState.entries = [];
+    backupRestoreState.selectedDate = '';
+    setBackupRestoreMessage(`Não foi possível carregar os backups. Detalhe: ${error?.message || 'erro desconhecido'}`, 'error');
+  } finally {
+    backupRestoreState.loading = false;
+    renderBackupRestoreCalendar();
+  }
+}
+
+function openBackupRestoreEditor() {
+  if (!isAdminUser()) return;
+  if (!supabaseClient) {
+    alert('A restauração automática depende da sincronização com o Supabase.');
+    return;
+  }
+
+  backupRestoreState = {
+    entries: [],
+    selectedDate: '',
+    loading: true,
+    restoring: false,
+  };
+
+  document.getElementById('backup-restore-overlay')?.classList.add('open');
+  renderBackupRestoreCalendar();
+  loadBackupRestoreEntries();
+}
+
+function closeBackupRestoreEditor() {
+  if (backupRestoreState.restoring) return;
+  document.getElementById('backup-restore-overlay')?.classList.remove('open');
+}
+
+async function confirmBackupRestoreSelection() {
+  if (!isAdminUser() || backupRestoreState.restoring) return;
+
+  const selectedEntry = getBackupRestoreSelectedEntry();
+  if (!selectedEntry?.isRestorable) {
+    setBackupRestoreMessage('Escolha uma data com backup completo para restaurar.', 'error');
+    return;
+  }
+
+  if (syncVisibleInputsToState()) {
+    state.sync.dirty = true;
+  }
+
+  const confirmationLines = [
+    `Restaurar o backup de ${formatDateLabel(parseBackupDateKey(selectedEntry.backupDate))}?`,
+    '',
+    'Isso vai restaurar os dados do banco e os anexos do storage.',
+    'O conteúdo atual do app poderá ser substituído pelos dados desse backup.',
+  ];
+  if (state.sync.dirty) {
+    confirmationLines.push('', 'Existem alterações locais abertas no navegador. Após a restauração, o app será recarregado.');
+  }
+
+  if (!confirm(confirmationLines.join('\n'))) {
+    return;
+  }
+
+  backupRestoreState.restoring = true;
+  setBackupRestoreMessage(`Restaurando o backup de ${formatDateLabel(parseBackupDateKey(selectedEntry.backupDate))}...`);
+  renderBackupRestorePreview();
+
+  try {
+    const result = await callBackupManagerFunction({
+      action: 'restore',
+      backup_date: selectedEntry.backupDate,
+    });
+    clearLocalDraft();
+    state.sync.dirty = false;
+    backupRestoreState.restoring = false;
+    closeBackupRestoreEditor();
+    await reloadFromCloud(true);
+    alert(`Backup restaurado com sucesso.\n\nSnapshots restaurados: ${result?.databaseRestoredCount ?? 0}\nArquivos restaurados: ${result?.storageRestoredCount ?? 0}`);
+  } catch (error) {
+    setBackupRestoreMessage(`Não foi possível restaurar o backup. Detalhe: ${error?.message || 'erro desconhecido'}`, 'error');
+  } finally {
+    backupRestoreState.restoring = false;
+    renderBackupRestorePreview();
+  }
 }
 
 function previewCopyConfigSelection() {
