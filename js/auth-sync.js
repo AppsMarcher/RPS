@@ -959,6 +959,7 @@ async function confirmBackupRestoreSelection() {
     const result = await callBackupManagerFunction({
       action: 'restore',
       backup_date: selectedEntry.backupDate,
+      storage_backup_date: selectedEntry.storageBackupDate || selectedEntry.backupDate,
     });
     clearLocalDraft();
     state.sync.dirty = false;
