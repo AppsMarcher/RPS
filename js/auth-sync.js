@@ -791,7 +791,6 @@ function renderBackupRestoreCalendar() {
       cells.push('<div class="backup-day-spacer" aria-hidden="true"></div>');
     }
 
-    const todayKey = formatBackupDateKey(new Date());
     for (let day = 1; day <= totalDays; day++) {
       const dateKey = `${monthKey}-${String(day).padStart(2, '0')}`;
       const entry = availabilityMap[dateKey] || null;
@@ -803,7 +802,6 @@ function renderBackupRestoreCalendar() {
         entry?.isRestorable ? 'is-available' : '',
         hasAny && !entry?.isRestorable ? 'is-partial' : '',
         isSelected ? 'is-selected' : '',
-        todayKey === dateKey ? 'is-today' : '',
       ].filter(Boolean).join(' ');
 
       if (!isRecent) {
