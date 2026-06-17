@@ -1103,6 +1103,7 @@ td.var-cell    { text-align: center; font-size: var(--grid-value-font-size); fon
 }
 
 .backup-day-status-dot {
+  display: inline-block;
   width: 6px;
   height: 6px;
   border-radius: 999px;
