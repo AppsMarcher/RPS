@@ -76,6 +76,7 @@
       <button class="nav-btn" onclick="changeMonth(1)">&#8250;</button>
     </div>
     <button class="btn hidden" id="copy-month-config-btn" onclick="copyMonthConfiguration()"><i class="ti ti-copy"></i> Copiar configuração</button>
+    <button class="btn hidden" id="backup-restore-btn" onclick="openBackupRestoreEditor()"><i class="ti ti-history-toggle"></i> Restaurar backup</button>
     <span class="focus-badge" id="focus-badge">
       <i class="ti ti-eye" style="font-size:11px"></i>
       <span id="focus-label">Nenhuma semana em foco</span>
@@ -381,6 +382,34 @@
       <div class="admin-actions">
         <button class="btn btn-primary" type="button" onclick="confirmCopyMonthConfiguration()"><i class="ti ti-copy"></i> Copiar configuração</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="admin-overlay" id="backup-restore-overlay" onclick="closeBackupRestoreEditor()">
+  <div class="admin-modal backup-restore-modal" onclick="event.stopPropagation()">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title">Restaurar backup</div>
+        <div class="admin-sub" id="backup-restore-current-label">Escolha um backup dos últimos 30 dias para restaurar os dados e anexos automaticamente.</div>
+      </div>
+      <button class="btn" type="button" onclick="closeBackupRestoreEditor()"><i class="ti ti-x"></i> Fechar</button>
+    </div>
+
+    <div class="admin-form">
+      <div class="backup-restore-legend">
+        <span class="backup-legend-item"><span class="backup-legend-dot is-ready"></span> Backup completo disponível</span>
+        <span class="backup-legend-item"><span class="backup-legend-dot is-partial"></span> Backup parcial</span>
+        <span class="backup-legend-item"><span class="backup-legend-dot is-empty"></span> Sem backup</span>
+      </div>
+
+      <div class="backup-restore-months" id="backup-restore-months"></div>
+      <div class="policy-preview backup-restore-preview" id="backup-restore-preview">Carregando backups...</div>
+
+      <div class="admin-actions backup-restore-actions">
+        <button class="btn btn-primary" type="button" id="backup-restore-confirm-btn" onclick="confirmBackupRestoreSelection()" disabled><i class="ti ti-history-toggle"></i> Restaurar backup escolhido</button>
+      </div>
+      <div class="login-message" id="backup-restore-message">Somente admins podem restaurar um backup completo.</div>
     </div>
   </div>
 </div>
