@@ -809,6 +809,10 @@ function renderBackupRestoreCalendar() {
         continue;
       }
 
+      const statusDot = hasAny
+        ? `<span class="backup-day-status-dot ${entry?.isRestorable ? 'is-available' : 'is-partial'}" aria-hidden="true"></span>`
+        : '';
+
       if (!hasAny) {
         cells.push(`<button class="${classes}" type="button" disabled><span class="backup-day-number">${day}</span></button>`);
         continue;
@@ -817,6 +821,7 @@ function renderBackupRestoreCalendar() {
       cells.push(`
         <button class="${classes}" type="button" onclick="selectBackupRestoreDate('${escapeJsString(dateKey)}')">
           <span class="backup-day-number">${day}</span>
+          ${statusDot}
         </button>
       `);
     }
