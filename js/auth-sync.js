@@ -811,22 +811,14 @@ function renderBackupRestoreCalendar() {
         continue;
       }
 
-      const badges = `
-        <span class="backup-day-badges">
-          ${entry?.hasDatabase ? '<span class="backup-day-badge is-db" title="Database"></span>' : ''}
-          ${entry?.hasStorage ? '<span class="backup-day-badge is-storage" title="Storage"></span>' : ''}
-        </span>
-      `;
-
       if (!hasAny) {
-        cells.push(`<button class="${classes}" type="button" disabled><span class="backup-day-number">${day}</span>${badges}</button>`);
+        cells.push(`<button class="${classes}" type="button" disabled><span class="backup-day-number">${day}</span></button>`);
         continue;
       }
 
       cells.push(`
         <button class="${classes}" type="button" onclick="selectBackupRestoreDate('${escapeJsString(dateKey)}')">
           <span class="backup-day-number">${day}</span>
-          ${badges}
         </button>
       `);
     }
