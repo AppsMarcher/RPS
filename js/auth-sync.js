@@ -721,6 +721,11 @@ function buildBackupRestorePreviewHtml(entry) {
   }
 
   const periods = Array.isArray(entry.databasePeriods) ? entry.databasePeriods.join(', ') : '';
+  const storageLabel = entry.storageBackupPrefix
+    ? (entry.storageBackupDate && entry.storageBackupDate !== entry.backupDate
+      ? `${entry.storageBackupPrefix} (${formatDateLabel(parseBackupDateKey(entry.storageBackupDate))})`
+      : entry.storageBackupPrefix)
+    : 'Não encontrado';
   return `
     <strong>${escapeHtml(getBackupRestoreStatusLabel(entry))}</strong>
     <div class="backup-restore-preview-grid">
@@ -734,7 +739,7 @@ function buildBackupRestorePreviewHtml(entry) {
       </div>
       <div>
         <strong>Backup do storage</strong>
-        <span>${entry.storageBackupPrefix ? escapeHtml(entry.storageBackupPrefix) : 'Não encontrado'}</span>
+        <span>${escapeHtml(storageLabel)}</span>
       </div>
       <div>
         <strong>Arquivos no storage</strong>
