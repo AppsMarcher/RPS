@@ -438,6 +438,24 @@
   </div>
 </div>
 
+<div class="admin-overlay" id="draft-recovery-overlay">
+  <div class="admin-modal policy-modal" onclick="event.stopPropagation()">
+    <div class="admin-head">
+      <div>
+        <div class="admin-title"><i class="ti ti-clock-hour-4" style="color:#e07b00;margin-right:6px"></i>Rascunho local encontrado</div>
+        <div class="admin-sub" id="draft-recovery-sub">Há edições locais não sincronizadas.</div>
+      </div>
+    </div>
+    <div class="admin-form">
+      <div class="policy-preview" id="draft-recovery-preview"></div>
+      <div class="admin-actions">
+        <button class="btn btn-primary" type="button" onclick="confirmDraftRecovery()"><i class="ti ti-clock-hour-4"></i> Restaurar rascunho</button>
+        <button class="btn" type="button" onclick="discardDraftRecovery()"><i class="ti ti-cloud-download"></i> Usar versão do servidor</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="supabase-config.js"></script>
 <script src="js/core.js"></script>
