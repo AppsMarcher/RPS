@@ -428,7 +428,7 @@ function mergeSnapshotIndicadoresSection(baseSection, remoteSection, localSectio
   return result;
 }
 
-function mergeSnapshotMapSection(baseSection, remoteSection, localSection, mergeMeta) {
+function mergeSnapshotMapSection(baseSection, remoteSection, localSection, mergeMeta, sectionName) {
   const base = baseSection || {};
   const remote = remoteSection || {};
   const local = localSection || {};
@@ -439,15 +439,20 @@ function mergeSnapshotMapSection(baseSection, remoteSection, localSection, merge
     ...Object.keys(local),
   ]);
 
-  keys.forEach(key => {
+  keys.forEach(k => {
+    const conflictsBefore = mergeMeta.conflicts;
     const chosen = resolveMergedEntry(
-      getSnapshotEntry(base, key),
-      getSnapshotEntry(remote, key),
-      getSnapshotEntry(local, key),
+      getSnapshotEntry(base, k),
+      getSnapshotEntry(remote, k),
+      getSnapshotEntry(local, k),
       mergeMeta
     );
+    if (mergeMeta.conflicts > conflictsBefore && sectionName) {
+      mergeMeta.conflictedKeys = mergeMeta.conflictedKeys || [];
+      mergeMeta.conflictedKeys.push({ section: sectionName, key: k });
+    }
     if (chosen.exists) {
-      result[key] = cloneSnapshotValue(chosen.value);
+      result[k] = cloneSnapshotValue(chosen.value);
     }
   });
 
@@ -474,16 +479,17 @@ function mergeSnapshotPayloads(basePayload, remotePayload, localPayload) {
   const mergeMeta = { conflicts: 0 };
 
   return {
+    conflictedKeys: mergeMeta.conflictedKeys || [],
     payload: {
       version: Math.max(base.version || 2, remote.version || 2, local.version || 2, 2),
       areas: mergeSnapshotAreasSection(base.areas, remote.areas, local.areas, mergeMeta),
       indicadores: mergeSnapshotIndicadoresSection(base.indicadores, remote.indicadores, local.indicadores, mergeMeta),
       unidades: mergeSnapshotMapSection(base.unidades, remote.unidades, local.unidades, mergeMeta),
-      dados: mergeSnapshotMapSection(base.dados, remote.dados, local.dados, mergeMeta),
+      dados: mergeSnapshotMapSection(base.dados, remote.dados, local.dados, mergeMeta, 'dados'),
       cellStyles: mergeSnapshotMapSection(base.cellStyles, remote.cellStyles, local.cellStyles, mergeMeta),
       comentarios: mergeSnapshotMapSection(base.comentarios, remote.comentarios, local.comentarios, mergeMeta),
-      dadosMes: mergeSnapshotMapSection(base.dadosMes, remote.dadosMes, local.dadosMes, mergeMeta),
-      dadosMeta: mergeSnapshotMapSection(base.dadosMeta, remote.dadosMeta, local.dadosMeta, mergeMeta),
+      dadosMes: mergeSnapshotMapSection(base.dadosMes, remote.dadosMes, local.dadosMes, mergeMeta, 'dadosMes'),
+      dadosMeta: mergeSnapshotMapSection(base.dadosMeta, remote.dadosMeta, local.dadosMeta, mergeMeta, 'dadosMeta'),
       anexos: mergeSnapshotMapSection(base.anexos, remote.anexos, local.anexos, mergeMeta),
       modoMes: mergeSnapshotMapSection(base.modoMes, remote.modoMes, local.modoMes, mergeMeta),
       modoMeta: mergeSnapshotMapSection(base.modoMeta, remote.modoMeta, local.modoMeta, mergeMeta),
@@ -512,7 +518,7 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
       ? normalizeSnapshotPayload(remoteData?.payload)
       : localPayload;
 
-    const { payload: mergedPayload, conflicts } = mergeSnapshotPayloads(basePayload, remoteData?.payload, protectedLocalPayload);
+    const { payload: mergedPayload, conflicts, conflictedKeys } = mergeSnapshotPayloads(basePayload, remoteData?.payload, protectedLocalPayload);
 
     // Sem linha remota: tenta inserir como version 1. O UNIQUE(ano, mes)
     // garante que apenas um INSERT concorrente vence; o perdedor recebe 23505,
@@ -528,7 +534,7 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
         });
 
       if (!insertError) {
-        return { ok: true, payload: mergedPayload, conflicts };
+        return { ok: true, payload: mergedPayload, conflicts, conflictedKeys };
       }
 
       lastError = insertError;
@@ -561,7 +567,7 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
     }
 
     if (Array.isArray(updatedRows) && updatedRows.length) {
-      return { ok: true, payload: mergedPayload, conflicts };
+      return { ok: true, payload: mergedPayload, conflicts, conflictedKeys };
     }
     // updatedRows vazio: outro editor avançou a version entre o select e o
     // update. Relê (pega o payload já gravado por ele) e remescla na próxima
@@ -1270,6 +1276,41 @@ function markDirty(options = {}) {
   }
 }
 
+function labelForConflictedKey({ section, key: k }) {
+  if (section === 'dados') {
+    const parts = k.split('|');
+    if (parts.length < 3) return k;
+    const [areaId, indId, col] = parts;
+    const area = state.areas.find(a => a.id === areaId);
+    const ind = getIndicators(areaId).find(i => i.id === indId);
+    const areaLabel = area?.nome || areaId;
+    const indLabel = ind?.label || indId;
+    return `${areaLabel} › ${indLabel} / ${col}`;
+  }
+  if (section === 'dadosMes') {
+    const raw = k.replace(/^vmes:/, '');
+    const [areaId, indId] = raw.split('|');
+    const area = state.areas.find(a => a.id === areaId);
+    const ind = getIndicators(areaId).find(i => i.id === indId);
+    return `${area?.nome || areaId} › ${ind?.label || indId} / Mês`;
+  }
+  if (section === 'dadosMeta') {
+    const raw = k.replace(/^vmeta:/, '');
+    const [areaId, indId] = raw.split('|');
+    const area = state.areas.find(a => a.id === areaId);
+    const ind = getIndicators(areaId).find(i => i.id === indId);
+    return `${area?.nome || areaId} › ${ind?.label || indId} / Meta`;
+  }
+  return k;
+}
+
+function buildConflictMessage(conflictedKeys) {
+  if (!conflictedKeys || !conflictedKeys.length) return null;
+  const labels = conflictedKeys.slice(0, 3).map(labelForConflictedKey);
+  const extra = conflictedKeys.length > 3 ? ` (+${conflictedKeys.length - 3})` : '';
+  return `Conflito mesclado — seu valor prevaleceu: ${labels.join(', ')}${extra}`;
+}
+
 async function saveToCloud(silent = false) {
   if (!supabaseClient) return false;
 
@@ -1287,6 +1328,7 @@ async function saveToCloud(silent = false) {
 
   const mergedPayload = saveResult.payload;
   const conflicts = saveResult.conflicts;
+  const conflictedKeys = saveResult.conflictedKeys || [];
   state.sync.lastSuccessAt = formatSyncTimestamp();
   const livePayload = buildSnapshotPayload();
   const liveChangedDuringSave = !areSnapshotValuesEqual(livePayload, localPayload);
@@ -1310,13 +1352,19 @@ async function saveToCloud(silent = false) {
   setSyncBasePayload(mergedPayload);
   clearLocalDraft();
   renderAll();
+  const conflictMsg = buildConflictMessage(conflictedKeys);
   setSyncStatus(
-    'ready',
-    conflicts
-      ? `Salvo com mesclagem segura: ${getPeriodoLabel()}`
-      : `Salvo em nuvem: ${getPeriodoLabel()}`,
-    false
+    conflictMsg ? 'dirty' : 'ready',
+    conflictMsg || `Salvo em nuvem: ${getPeriodoLabel()}`,
+    !!conflictMsg
   );
+  if (conflictMsg) {
+    clearTimeout(syncMessageTimer);
+    syncMessageTimer = setTimeout(() => {
+      setSyncStatus('ready', `Salvo em nuvem: ${getPeriodoLabel()}`, false);
+      scheduleSyncMessageReset();
+    }, 8000);
+  }
   if (!silent) scheduleSyncMessageReset();
   else scheduleSyncMessageReset();
   return true;
