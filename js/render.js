@@ -175,6 +175,7 @@ function renderBody() {
           if (syncGridInputElementToState(e.target)) {
             e.target.dataset.pendingSync = '1';
             markDirty({ autosave: false, syncInputs: false });
+            refreshCalculatedCells();
           }
           if (canEditRows && e.target.value === '=') {
             showFormulaHint(e.target);
@@ -267,6 +268,7 @@ function renderBody() {
           if (syncGridInputElementToState(e.target)) {
             e.target.dataset.pendingSync = '1';
             markDirty({ autosave: false, syncInputs: false });
+            refreshCalculatedCells();
           }
         };
         inp2.onpaste = handleGridPaste;
@@ -333,6 +335,7 @@ function renderBody() {
           if (syncGridInputElementToState(e.target)) {
             e.target.dataset.pendingSync = '1';
             markDirty({ autosave: false, syncInputs: false });
+            refreshCalculatedCells();
           }
         };
         inp3.onpaste = handleGridPaste;
