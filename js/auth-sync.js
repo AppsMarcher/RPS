@@ -576,6 +576,8 @@ async function writeSnapshotWithRetry(localPayload, silent = false) {
 
 function resetForSignedOut() {
   clearTimeout(saveTimer);
+  clearTimeout(maxSaveTimer);
+  maxSaveTimer = null;
   state.sync.basePayload = null;
   closePresent();
   resetStateData();
@@ -1260,6 +1262,12 @@ function markDirty(options = {}) {
       saveToCloud(true);
     }, autosaveDelayMs);
   }
+  if (!maxSaveTimer) {
+    maxSaveTimer = setTimeout(() => {
+      maxSaveTimer = null;
+      saveToCloud(true);
+    }, 30_000);
+  }
 }
 
 async function saveToCloud(silent = false) {
@@ -1296,6 +1304,8 @@ async function saveToCloud(silent = false) {
     return true;
   }
 
+  clearTimeout(maxSaveTimer);
+  maxSaveTimer = null;
   applySnapshotPayload(mergedPayload);
   setSyncBasePayload(mergedPayload);
   clearLocalDraft();

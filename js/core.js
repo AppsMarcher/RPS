@@ -107,6 +107,7 @@ let attachmentManagerState = null;
 let resizeState = null;
 let supabaseClient = null;
 let saveTimer = null;
+let maxSaveTimer = null;
 let syncMessageTimer = null;
 let authSubscription = null;
 let authPostLogoutMessage = '';
