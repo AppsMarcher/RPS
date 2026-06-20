@@ -88,6 +88,8 @@ function renderBody() {
 
       const row = document.createElement('tr');
       row.className = 'indicator-row';
+      row.dataset.areaId = area.id;
+      row.dataset.indId = ind.id;
       if (isEditorUser() && isFormulaIndicatorRow(area.id, ind)) {
         row.classList.add('editor-formula-row');
       }
@@ -164,7 +166,7 @@ function renderBody() {
             delete e.target.dataset.pendingSync;
           }
           e.target.value = rv ? formatVal(rv, unitCell) : '';
-          renderBody();
+          refreshCalculatedCells();
         };
         inp.onkeydown = e => {
           handleGridEnterNavigation(e);
@@ -256,7 +258,7 @@ function renderBody() {
             delete e.target.dataset.pendingSync;
           }
           e.target.value = rv ? formatVal(rv, unit) : '';
-          renderBody();
+          refreshCalculatedCells();
         };
         inp2.onkeydown = e => {
           handleGridEnterNavigation(e);
@@ -322,7 +324,7 @@ function renderBody() {
             delete e.target.dataset.pendingSync;
           }
           e.target.value = rv ? formatVal(rv, unit) : '';
-          renderBody();
+          refreshCalculatedCells();
         };
         inp3.onkeydown = e => {
           handleGridEnterNavigation(e);
@@ -450,6 +452,73 @@ function applySavedCellStyle(k, td, wrap, inp) {
   if (snapshot.tdStyle) td.setAttribute('style', snapshot.tdStyle);
   if (snapshot.wrapStyle) wrap.setAttribute('style', snapshot.wrapStyle);
   if (snapshot.inputStyle) inp.setAttribute('style', snapshot.inputStyle);
+}
+
+function refreshCalculatedCells() {
+  const tbody = document.getElementById('table-body');
+  if (!tbody) return;
+
+  state.areas.forEach(area => {
+    getIndicators(area.id).forEach(ind => {
+      if (isSpacerIndicator(ind)) return;
+      const unit = getUnit(area.id, ind);
+      const isAggregate = isAggregateIndicator(ind);
+      const row = tbody.querySelector(
+        `tr[data-area-id="${CSS.escape(area.id)}"][data-ind-id="${CSS.escape(ind.id)}"]`
+      );
+      if (!row) return;
+
+      if (isAggregate) {
+        state.semanas.forEach(s => {
+          const k = key(area.id, ind.id, s);
+          const inp = row.querySelector(`.cell-input[data-key="${CSS.escape(k)}"]`);
+          if (inp && document.activeElement !== inp) {
+            const calcVal = calcWeekValue(area.id, ind, s);
+            inp.value = formatNum(calcVal, state.unidades[k] || unit);
+          }
+        });
+      }
+
+      const valMes = calcMes(area.id, ind);
+      const valMeta = calcMeta(area.id, ind);
+
+      const tdMes = row.querySelector('td.mes-cell');
+      if (tdMes) {
+        const modoMesObj = getModoMesObj(area.id, ind);
+        if (isAggregate || modoMesObj.id !== 'manual') {
+          const calcSpan = tdMes.querySelector('.calc-val');
+          if (calcSpan) calcSpan.textContent = formatNum(valMes, unit);
+        }
+      }
+
+      const vv = calcVarDiff(valMes, valMeta);
+      const vp = calcVar(valMes, valMeta);
+
+      const tdVarDiff = row.querySelector('td.vardiff-cell');
+      if (tdVarDiff) {
+        if (vv === null) {
+          tdVarDiff.innerHTML = `<span class="var-neu">-</span>`;
+        } else {
+          const cls = vv > 0 ? 'var-pos' : vv < 0 ? 'var-neg' : 'var-neu';
+          const ic = vv > 0 ? 'ti-trending-up' : vv < 0 ? 'ti-trending-down' : 'ti-minus';
+          tdVarDiff.innerHTML = `<span class="${cls}" style="display:flex;align-items:center;justify-content:center;gap:3px">
+            <i class="ti ${ic}" style="font-size:12px"></i>${formatNum(vv, unit)}</span>`;
+        }
+      }
+
+      const tdVar = row.querySelector('td.var-cell');
+      if (tdVar) {
+        if (vp === null) {
+          tdVar.innerHTML = `<span class="var-neu">-</span>`;
+        } else {
+          const cls = vp > 0 ? 'var-pos' : vp < 0 ? 'var-neg' : 'var-neu';
+          const ic = vp > 0 ? 'ti-trending-up' : 'ti-trending-down';
+          tdVar.innerHTML = `<span class="${cls}" style="display:flex;align-items:center;justify-content:center;gap:3px">
+            <i class="ti ${ic}" style="font-size:12px"></i>${vp > 0 ? '+' : ''}${vp.toFixed(1)}%</span>`;
+        }
+      }
+    });
+  });
 }
 
 function toggleFocus(i) {
