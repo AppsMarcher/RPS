@@ -61,6 +61,14 @@
   }
 }
 
+function closeSiteNotice() {
+  const overlay = document.getElementById('site-notice-overlay');
+  overlay?.classList.remove('open');
+  overlay?.setAttribute('aria-hidden', 'true');
+}
+
+document.getElementById('site-notice-button')?.focus();
+
 bootstrap();
 
 

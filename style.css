@@ -18,6 +18,76 @@
 
 body { font-family: var(--font); background: var(--color-bg-tertiary); min-height: 100vh; }
 
+/* COMUNICADO DE MIGRAÇÃO */
+.site-notice-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 26, 38, 0.64);
+  backdrop-filter: blur(6px);
+}
+
+.site-notice-overlay.open { display: flex; }
+
+.site-notice-card {
+  width: min(520px, 100%);
+  padding: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 28px 80px rgba(9, 20, 32, 0.28);
+  text-align: center;
+}
+
+.site-notice-icon {
+  display: inline-flex;
+  width: 58px;
+  height: 58px;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  border-radius: 18px;
+  background: #E6F1FB;
+  color: #185FA5;
+  font-size: 29px;
+}
+
+.site-notice-eyebrow {
+  margin-bottom: 8px;
+  color: #C0302A;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.site-notice-title {
+  color: var(--color-text-primary);
+  font-size: 26px;
+  line-height: 1.2;
+}
+
+.site-notice-description {
+  margin-top: 14px;
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.site-notice-description strong { color: #185FA5; }
+
+.site-notice-button {
+  width: 100%;
+  justify-content: center;
+  margin-top: 24px;
+  padding: 11px 16px;
+  font-size: 14px;
+}
+
 /* LAYOUT */
 .app { padding: 0.75rem; }
 .app-shell {
@@ -1542,6 +1612,14 @@ td.mes-cell  .mode-icon-btn:hover { color: #3B6D11; background: rgba(90,144,32,0
 td.meta-cell .mode-icon-btn:hover { color: #633806; background: rgba(186,117,23,0.15); }
 
 @media (max-width: 820px) {
+  .site-notice-card {
+    padding: 28px 22px;
+  }
+
+  .site-notice-title {
+    font-size: 22px;
+  }
+
   .login-card {
     padding: 22px;
   }

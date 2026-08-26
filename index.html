@@ -9,6 +9,23 @@
 </head>
 <body>
 
+<div class="site-notice-overlay open" id="site-notice-overlay" role="dialog" aria-modal="true" aria-labelledby="site-notice-title" aria-describedby="site-notice-description">
+  <div class="site-notice-card">
+    <div class="site-notice-icon" aria-hidden="true">
+      <i class="ti ti-speakerphone"></i>
+    </div>
+    <div class="site-notice-eyebrow">Comunicado importante</div>
+    <h1 class="site-notice-title" id="site-notice-title">A RPS de Gestão mudou para o Vecton</h1>
+    <p class="site-notice-description" id="site-notice-description">
+      Este site será desabilitado. A partir de agora, a RPS de Gestão deverá ser feita dentro do <strong>Vecton</strong>.
+    </p>
+    <button class="btn btn-primary site-notice-button" id="site-notice-button" type="button" onclick="closeSiteNotice()">
+      Entendi
+      <i class="ti ti-arrow-right"></i>
+    </button>
+  </div>
+</div>
+
 <div class="login-shell" id="login-shell">
   <div class="login-card">
     <div class="login-brand">
