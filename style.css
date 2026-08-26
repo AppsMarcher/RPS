@@ -34,6 +34,7 @@ body { font-family: var(--font); background: var(--color-bg-tertiary); min-heigh
 .site-notice-overlay.open { display: flex; }
 
 .site-notice-card {
+  position: relative;
   width: min(520px, 100%);
   padding: 34px;
   border: 1px solid rgba(255, 255, 255, 0.7);
@@ -41,6 +42,34 @@ body { font-family: var(--font); background: var(--color-bg-tertiary); min-heigh
   background: #fff;
   box-shadow: 0 28px 80px rgba(9, 20, 32, 0.28);
   text-align: center;
+}
+
+.site-notice-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 20px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.site-notice-close:hover {
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+}
+
+.site-notice-close:focus-visible {
+  outline: 2px solid #378ADD;
+  outline-offset: 2px;
 }
 
 .site-notice-icon {
@@ -86,6 +115,7 @@ body { font-family: var(--font); background: var(--color-bg-tertiary); min-heigh
   margin-top: 24px;
   padding: 11px 16px;
   font-size: 14px;
+  text-decoration: none;
 }
 
 /* LAYOUT */
